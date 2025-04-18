@@ -1,0 +1,13 @@
+path: .\dataset_treinamento
+train: ./images
+val: ./images
+nc: 8
+names:
+- Abafador de ruido
+- Botas de seguranca
+- Capacete de seguranca
+- Luvas de protecao
+- Mascara
+- Oculos de protecao
+- Pessoa
+- Roupa de protecao

@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  detection-service:
+    build: ./detection-service
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./detection-service/src:/app
+      - model-data:/app/models
+    environment:
+      - FLASK_ENV=development
+      - MODEL_SERVICE_URL=http://model-service:5001
+      - STATS_SERVICE_URL=http://stats-service:5002
+    depends_on:
+      - model-service
+      - stats-service
+
+  model-service:
+    build: ./model-service
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./model-service/src:/app
+      - model-data:/app/models
+      - dataset-data:/app/datasets
+    environment:
+      - FLASK_ENV=development
+      - DETECTION_SERVICE_URL=http://detection-service:5000
+      - STATS_SERVICE_URL=http://stats-service:5002
+
+  stats-service:
+    build: ./stats-service
+    ports:
+      - "5002:5002"
+    volumes:
+      - ./stats-service/src:/app
+      - ./stats-service/data:/app/data
+    environment:
+      - FLASK_ENV=development
+      - DETECTION_SERVICE_URL=http://detection-service:5000
+      - MODEL_SERVICE_URL=http://model-service:5001
+
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./notification-service/src:/app
+    environment:
+      - FLASK_ENV=development
+      - DETECTION_SERVICE_URL=http://detection-service:5000
+      - STATS_SERVICE_URL=http://stats-service:5002
+
+  frontend-service:
+    build: ./frontend-service
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend-service/src:/app
+    environment:
+      - FLASK_ENV=development
+      - API_URL=http://detection-service:5000
+    depends_on:
+      - detection-service
+      - model-service
+      - stats-service
+      - notification-service
+
+volumes:
+  model-data:
+  dataset-data: 

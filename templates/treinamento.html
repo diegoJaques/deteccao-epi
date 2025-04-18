@@ -1,0 +1,1879 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treinamento de Modelos YOLO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            padding-top: 20px;
+            background-color: #f8f9fa;
+        }
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .card-header {
+            background-color: #343a40;
+            color: white;
+        }
+        .canvas-container {
+            position: relative;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+            max-width: 100%;
+            max-height: 600px;
+            overflow: auto;
+        }
+        #annotationCanvas {
+            display: block;
+            background-color: #f8f9fa;
+        }
+        .toolbar {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+        }
+        .progress-container {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        .annotation-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .annotation-item {
+            padding: 5px;
+            margin: 3px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .class-select {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .help-text {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        #batchUploadInterface {
+            transition: all 0.3s ease;
+        }
+        .training-status {
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .training-running {
+            background-color: #cff4fc;
+            border: 1px solid #9eeaf9;
+        }
+        .training-success {
+            background-color: #d1e7dd;
+            border: 1px solid #badbcc;
+        }
+        .training-failed {
+            background-color: #f8d7da;
+            border: 1px solid #f5c2c7;
+        }
+        #startTrainingBtn {
+            margin-bottom: 10px;
+        }
+        .detection-box {
+            position: absolute;
+            border: 2px solid;
+            border-radius: 3px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="alertsContainer" class="position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>
+    
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">Treinamento de Modelos YOLO</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/"><i class="bi bi-house-door"></i> Página Principal</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Container para alertas -->
+        <div id="alertsContainer"></div>
+        
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h5><i class="bi bi-info-circle"></i> Como treinar seu modelo de detecção de objetos</h5>
+                    <p>Siga os passos abaixo para criar um dataset e treinar um modelo personalizado:</p>
+                    <ol>
+                        <li>Carregue imagens que contenham objetos que você deseja detectar</li>
+                        <li>Desenhe retângulos em torno de cada objeto na imagem</li>
+                        <li>Selecione a classe correta para cada retângulo</li>
+                        <li>Salve as anotações</li>
+                        <li>Repita o processo com pelo menos 10 imagens diferentes</li>
+                        <li>Inicie o treinamento quando tiver anotações suficientes</li>
+                    </ol>
+                    <p><strong>Dica:</strong> Quanto mais imagens você anotar, melhor será o modelo. Recomendamos pelo menos 50 imagens com boa diversidade de situações.</p>
+                    
+                    <div class="mt-3 mb-2">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="batchModeToggle">
+                            <label class="form-check-label fw-bold" for="batchModeToggle">Ativar modo de anotação em lote</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5><i class="bi bi-graph-up"></i> Progresso do Dataset</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress-container">
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <h6>Total de imagens: <span id="totalImages">{{ num_imagens }}</span></h6>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Imagens anotadas: <span id="annotatedImages">0</span></h6>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Total de anotações: <span id="totalAnnotations">0</span></h6>
+                                </div>
+                            </div>
+                            
+                            <h6>Progresso de anotação:</h6>
+                            <div class="progress">
+                                <div id="annotationProgress" class="progress-bar" role="progressbar" style="width: 0%;" 
+                                     aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                            </div>
+                            <p class="mt-2">
+                                <small class="text-muted">Mínimo recomendado: 50 imagens / Mínimo necessário: 10 imagens</small>
+                            </p>
+                        </div>
+
+                        <div class="mt-4">
+                            <h6>Estatísticas por classe:</h6>
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Classe</th>
+                                        <th>Quantidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="classStatistics">
+                                    <!-- As estatísticas serão adicionadas aqui -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button id="startTrainingBtn" class="btn btn-success {{ 'disabled' if num_imagens < 10 else '' }}" 
+                                   {{ 'disabled' if num_imagens < 10 else '' }} onclick="startTraining()">
+                                <i class="bi bi-play-circle"></i> Iniciar Treinamento
+                            </button>
+                            <div id="trainingWarning" class="alert alert-warning" style="display: {{ 'none' if num_imagens >= 10 else 'block' }}">
+                                Necessário pelo menos 10 imagens anotadas para iniciar treinamento. Atual: {{ num_imagens }}
+                            </div>
+                            <button id="clearDatasetBtn" class="btn btn-outline-danger" onclick="clearDataset()">
+                                <i class="bi bi-trash"></i> Limpar Dataset
+                            </button>
+                            <div id="trainingStatus"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interface de Upload em Lote (inicialmente oculta) -->
+        <div id="batchUploadInterface" class="row mb-4" style="display: none;">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5>Upload em Lote</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="batchImageInput" class="form-label">Selecione múltiplas imagens para anotar em sequência:</label>
+                            <input type="file" class="form-control" id="batchImageInput" accept="image/*" multiple>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button id="uploadBatchButton" class="btn btn-primary">
+                                <i class="fas fa-upload"></i> Carregar Imagens
+                            </button>
+                        </div>
+                        
+                        <div id="batchUploadStatus" class="mt-3"></div>
+                        
+                        <div id="batchProcessInfo" class="mt-3" style="display: none;">
+                            <div class="alert alert-info">
+                                <p class="mb-1"><strong>Processando lote de imagens:</strong></p>
+                                <p class="mb-1">Imagem atual: <span id="currentImageName">-</span></p>
+                                <p class="mb-0">Restantes: <span id="remainingCount">0</span> imagens</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Elemento para status do lote -->
+                        <div id="batchStatus" class="mt-3"></div>
+                        
+                        <!-- Barra de progresso para processamento em lote -->
+                        <div class="progress mt-3" style="display: none;">
+                            <div id="batchProgress" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0/0 (0%)</div>
+                        </div>
+                        
+                        <!-- Container para as imagens do lote -->
+                        <div class="row mt-4" id="batchImageContainer">
+                            <!-- As imagens serão adicionadas aqui -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Interface de Anotação Individual -->
+            <div id="singleUploadInterface" class="col-lg-8">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h5><i class="bi bi-pen"></i> Anotação de Imagens</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="imageUpload" class="form-label">Carregar uma imagem para anotação:</label>
+                            <input class="form-control" type="file" id="imageUpload" accept="image/*" onchange="handleImageUpload(event)">
+                        </div>
+                        
+                        <div class="canvas-container">
+                            <canvas id="annotationCanvas"></canvas>
+                            <div id="boxesContainer"></div>
+                        </div>
+                        
+                        <div class="toolbar">
+                            <div class="row g-2">
+                                <div class="col-md-5">
+                                    <select id="classSelect" class="form-select class-select">
+                                        <option value="" disabled selected>Selecione uma classe</option>
+                                        <option value="pessoa">Pessoa</option>
+                                        <option value="capacete">Capacete</option>
+                                        <option value="luva">Luva</option>
+                                        <option value="colete">Colete</option>
+                                        <option value="oculos">Óculos de Proteção</option>
+                                        <option value="mascara">Máscara</option>
+                                        <option value="bota">Bota de Segurança</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-7">
+                                    <div class="btn-group w-100">
+                                        <button class="btn btn-primary" onclick="addNewClass()">
+                                            <i class="bi bi-plus-lg"></i> Nova Classe
+                                        </button>
+                                        <button id="saveAnnotationBtn" class="btn btn-success" onclick="saveAnnotation()" disabled>
+                                            <i class="bi bi-check-lg"></i> Salvar Anotação
+                                        </button>
+                                        <button class="btn btn-outline-secondary" onclick="clearAnnotations()">
+                                            <i class="bi bi-trash"></i> Limpar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3 d-grid">
+                            <div class="alert alert-info p-2 mb-2 text-center">
+                                <small><strong>ATENÇÃO:</strong> Ao terminar de anotar esta imagem, clique no botão abaixo para salvar no servidor!</small>
+                            </div>
+                            <button id="saveAllAnnotationsBtn" class="btn btn-success btn-lg py-3" onclick="saveAllAnnotations()">
+                                <i class="bi bi-save fs-4"></i> SALVAR ESTA IMAGEM E TODAS AS ANOTAÇÕES
+                            </button>
+                            <small class="text-muted text-center mt-1">Suas anotações não serão salvas até que você clique no botão acima</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-3">
+                    <div class="card-header bg-dark text-white">
+                        <h5><i class="bi bi-list-check"></i> Anotações na Imagem Atual</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="annotationList" class="annotation-list">
+                            <div class="alert alert-info" id="noAnnotationsMsg">
+                                Nenhuma anotação criada para esta imagem.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interface de Anotação em Lote -->
+            <div id="batchUploadInterface" class="col-lg-8" style="display: none;">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h5><i class="bi bi-files"></i> Anotação em Lote</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="batchImageUpload" class="form-label">Carregar múltiplas imagens:</label>
+                            <input class="form-control" type="file" id="batchImageUpload" accept="image/*" multiple onchange="handleBatchUpload(event)">
+                        </div>
+                        
+                        <div id="batchImagePreview" class="row g-3">
+                            <div class="col-12">
+                                <div class="alert alert-info">
+                                    Selecione imagens para iniciar a anotação em lote.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Painel Lateral de Ajuda e Status -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5><i class="bi bi-question-circle"></i> Ajuda e Dicas</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="help-text">
+                            <h6>Como anotar imagens:</h6>
+                            <ol>
+                                <li>Carregue uma imagem usando o botão acima</li>
+                                <li>Clique e arraste na imagem para desenhar um retângulo</li>
+                                <li>Selecione a classe do objeto no menu suspenso</li>
+                                <li>Clique em "Salvar Anotação" para preservar as marcações</li>
+                            </ol>
+                            
+                            <h6 class="mt-3">Dicas para melhores resultados:</h6>
+                            <ul>
+                                <li>Use imagens de alta qualidade e boa iluminação</li>
+                                <li>Inclua objetos em diferentes ângulos e distâncias</li>
+                                <li>Varie os cenários de fundo para melhor generalização</li>
+                                <li>Seja consistente nas anotações entre imagens semelhantes</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <h6>Parâmetros de Treinamento:</h6>
+                            <div class="mb-3">
+                                <label for="epochsInput" class="form-label">Épocas de treinamento:</label>
+                                <input type="number" class="form-control" id="epochsInput" value="100" min="10" max="300">
+                                <small class="text-muted">Recomendado: 100-200 épocas</small>
+                            </div>
+                            <div class="mb-3">
+                                <label for="batchSizeInput" class="form-label">Tamanho do lote:</label>
+                                <input type="number" class="form-control" id="batchSizeInput" value="8" min="1" max="32">
+                                <small class="text-muted">Valores menores usam menos memória</small>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="saveIntervalCheck" checked>
+                                <label class="form-check-label" for="saveIntervalCheck">
+                                    Salvar checkpoints intermediários
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="trainingDetailsCard" class="card mt-3" style="display: none;">
+                    <div class="card-header bg-success text-white">
+                        <h5><i class="bi bi-cpu"></i> Status do Treinamento</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="trainingProgress">
+                            <p>Inicializando treinamento...</p>
+                            <div class="progress mb-3">
+                                <div id="trainingProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                    role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                            </div>
+                            <p>Época: <span id="currentEpoch">0</span>/<span id="totalEpochs">100</span></p>
+                            <p>Tempo estimado restante: <span id="timeRemaining">calculando...</span></p>
+                        </div>
+                        <div id="trainingResults" style="display: none;">
+                            <h6>Métricas Finais:</h6>
+                            <ul>
+                                <li>Precisão (mAP): <span id="mapValue">-</span></li>
+                                <li>Recall: <span id="recallValue">-</span></li>
+                                <li>F1-Score: <span id="f1Value">-</span></li>
+                            </ul>
+                            <button class="btn btn-primary" onclick="location.href='/'">
+                                <i class="bi bi-check-circle"></i> Voltar para Detecção
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal para Adicionar Nova Classe -->
+    <div class="modal fade" id="addClassModal" tabindex="-1" aria-labelledby="addClassModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addClassModalLabel">Adicionar Nova Classe</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="newClassInput" class="form-label">Nome da Classe:</label>
+                        <input type="text" class="form-control" id="newClassInput" placeholder="Ex: cadeira, mesa, celular">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmAddClass()">Adicionar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Loading -->
+    <div class="modal fade" id="loadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="loadingModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loadingModalLabel">Processando...</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                    <p id="loadingMessage">Aguarde um momento</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmModalLabel">Confirmação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="confirmMessage">
+                    Tem certeza que deseja continuar?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="confirmActionBtn">Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Variáveis globais
+        let currentImage = null;
+        let annotations = [];
+        let datasetImages = [];
+        let selectedClass = '';
+        let currentBox = null;
+        let isDrawing = false;
+        let startX, startY;
+        let availableClasses = [];
+        
+        // Esperar o DOM carregar completamente
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("DOM carregado completamente");
+            
+            // Inicializar a interface
+            setupInterface();
+            
+            // Carregar dados iniciais
+            loadDatasetStatus();
+            loadBatchImages();
+            updateClassSelector();
+        });
+        
+        // Configura a interface inicial
+        function setupInterface() {
+            try {
+                // Setup do canvas de anotação
+                const canvas = document.getElementById('annotationCanvas');
+                if (canvas) {
+                    // Configurar canvas...
+                    canvas.addEventListener('mousedown', handleMouseDown);
+                    canvas.addEventListener('mousemove', handleMouseMove);
+                    canvas.addEventListener('mouseup', handleMouseUp);
+                }
+                
+                // Setup dos botões e eventos
+                const uploadButton = document.getElementById('uploadBatchButton');
+                if (uploadButton) {
+                    uploadButton.addEventListener('click', () => {
+                        const input = document.getElementById('batchImageInput');
+                        if (input) input.click();
+                    });
+                }
+                
+                const batchImageInput = document.getElementById('batchImageInput');
+                if (batchImageInput) {
+                    batchImageInput.addEventListener('change', handleBatchUpload);
+                }
+                
+                const batchModeToggle = document.getElementById('batchModeToggle');
+                if (batchModeToggle) {
+                    batchModeToggle.addEventListener('change', (e) => {
+                        const batchInterface = document.getElementById('batchUploadInterface');
+                        if (batchInterface) {
+                            batchInterface.style.display = e.target.checked ? 'flex' : 'none';
+                        }
+                    });
+                }
+                
+                console.log("Interface configurada com sucesso");
+            } catch (error) {
+                console.error("Erro ao configurar interface:", error);
+            }
+        }
+        
+        // Manipulação de eventos do mouse
+        function handleMouseDown(e) {
+            console.log("Mouse down");
+            if (!currentImage) return;
+            
+            const canvas = document.getElementById('annotationCanvas');
+            if (!canvas) {
+                console.error("Canvas não encontrado!");
+                return;
+            }
+            
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / parseFloat(canvas.style.width || canvas.width);
+            const scaleY = canvas.height / parseFloat(canvas.style.height || canvas.height);
+            
+            startX = (e.clientX - rect.left) * scaleX;
+            startY = (e.clientY - rect.top) * scaleY;
+            
+            isDrawing = true;
+        }
+        
+        function handleMouseMove(e) {
+            if (!isDrawing || !currentImage) return;
+            
+            const canvas = document.getElementById('annotationCanvas');
+            if (!canvas) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / parseFloat(canvas.style.width || canvas.width);
+            const scaleY = canvas.height / parseFloat(canvas.style.height || canvas.height);
+            
+            const currentX = (e.clientX - rect.left) * scaleX;
+            const currentY = (e.clientY - rect.top) * scaleY;
+            
+            // Em vez de redesenhar tudo, vamos apenas desenhar sobre a imagem atual
+            const ctx = canvas.getContext('2d');
+            
+            // Primeiro limpar apenas a área desenhada anteriormente
+            if (window.lastDrawRect) {
+                ctx.clearRect(
+                    window.lastDrawRect.x - 2, 
+                    window.lastDrawRect.y - 2, 
+                    window.lastDrawRect.width + 4, 
+                    window.lastDrawRect.height + 4
+                );
+                // Restaurar a área limpa desenhando a imagem
+                const img = new Image();
+                img.src = currentImage.src;
+                ctx.drawImage(img, 
+                    window.lastDrawRect.x - 2, window.lastDrawRect.y - 2, 
+                    window.lastDrawRect.width + 4, window.lastDrawRect.height + 4,
+                    window.lastDrawRect.x - 2, window.lastDrawRect.y - 2, 
+                    window.lastDrawRect.width + 4, window.lastDrawRect.height + 4
+                );
+            }
+            
+            // Desenhar retângulo atual
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            ctx.lineWidth = 2;
+            
+            const width = currentX - startX;
+            const height = currentY - startY;
+            
+            ctx.strokeRect(startX, startY, width, height);
+            
+            // Salvar o retângulo atual para limpeza posterior
+            window.lastDrawRect = {
+                x: Math.min(startX, startX + width),
+                y: Math.min(startY, startY + height),
+                width: Math.abs(width),
+                height: Math.abs(height)
+            };
+        }
+        
+        function handleMouseUp(e) {
+            if (!isDrawing || !currentImage) return;
+            
+            const canvas = document.getElementById('annotationCanvas');
+            if (!canvas) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / parseFloat(canvas.style.width || canvas.width);
+            const scaleY = canvas.height / parseFloat(canvas.style.height || canvas.height);
+            
+            const endX = (e.clientX - rect.left) * scaleX;
+            const endY = (e.clientY - rect.top) * scaleY;
+            
+            isDrawing = false;
+            
+            // Verificar tamanho mínimo
+            const width = Math.abs(endX - startX);
+            const height = Math.abs(endY - startY);
+            
+            if (width < 10 || height < 10) {
+                redrawCanvas();
+                return;
+            }
+            
+            // Normalizar coordenadas
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            
+            // Criar novo box
+            currentBox = {
+                x: x,
+                y: y,
+                width: width,
+                height: height
+            };
+            
+            // Habilitar botão de salvar
+            const saveButton = document.getElementById('saveAnnotationBtn');
+            if (saveButton) saveButton.disabled = false;
+        }
+        
+        // Redesenha o canvas com a imagem e todas as anotações
+        function redrawCanvas() {
+            if (!currentImage) return;
+            
+            const canvas = document.getElementById('annotationCanvas');
+            if (!canvas) {
+                console.error("Canvas não encontrado!");
+                return;
+            }
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Limpar canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Desenhar imagem
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // Desenhar anotações
+                annotations.forEach(annotation => {
+                    ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(
+                        annotation.x, 
+                        annotation.y, 
+                        annotation.width, 
+                        annotation.height
+                    );
+                    
+                    // Adicionar label
+                    if (annotation.class) {
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                        ctx.fillRect(
+                            annotation.x, 
+                            annotation.y - 20, 
+                            Math.max(50, annotation.class.length * 8), 
+                            20
+                        );
+                        ctx.fillStyle = 'white';
+                        ctx.font = '12px Arial';
+                        ctx.fillText(
+                            annotation.class, 
+                            annotation.x + 5, 
+                            annotation.y - 5
+                        );
+                    }
+                });
+            };
+            img.src = currentImage.src;
+        }
+
+        // Carrega o status atual do dataset (imagens, anotações, etc.)
+        function loadDatasetStatus() {
+            console.log("Carregando status do dataset");
+            fetch('/api/dataset/status')
+                .then(response => response.json())
+                .then(data => {
+                    try {
+                        // Atualizar estatísticas
+                        const totalImages = document.getElementById('totalImages');
+                        const annotatedImages = document.getElementById('annotatedImages');
+                        const totalAnnotations = document.getElementById('totalAnnotations');
+                        
+                        if (totalImages) totalImages.textContent = data.total_images || 0;
+                        if (annotatedImages) annotatedImages.textContent = data.annotated_images || 0;
+                        if (totalAnnotations) totalAnnotations.textContent = data.total_annotations || 0;
+                        
+                        // Atualizar progresso
+                        const progressBar = document.getElementById('annotationProgress');
+                        if (progressBar) {
+                            if (data.total_images > 0) {
+                                const percentage = Math.round((data.annotated_images / data.total_images) * 100);
+                                progressBar.style.width = `${percentage}%`;
+                                progressBar.textContent = `${percentage}%`;
+                                
+                                // Alterar cor baseado no progresso
+                                if (percentage < 30) {
+                                    progressBar.className = 'progress-bar bg-danger';
+                                } else if (percentage < 70) {
+                                    progressBar.className = 'progress-bar bg-warning';
+                                } else {
+                                    progressBar.className = 'progress-bar bg-success';
+                                }
+                            } else {
+                                progressBar.style.width = '0%';
+                                progressBar.textContent = '0%';
+                                progressBar.className = 'progress-bar bg-danger';
+                            }
+                        }
+                        
+                        // Atualizar estatísticas por classe
+                        const classStats = document.getElementById('classStatistics');
+                        if (classStats) {
+                            classStats.innerHTML = '';
+                            
+                            if (data.class_counts && Object.keys(data.class_counts).length > 0) {
+                                Object.entries(data.class_counts).forEach(([className, count]) => {
+                                    const row = document.createElement('tr');
+                                    row.innerHTML = `
+                                        <td>${className}</td>
+                                        <td>${count}</td>
+                                    `;
+                                    classStats.appendChild(row);
+                                });
+                            } else {
+                                const row = document.createElement('tr');
+                                row.innerHTML = '<td colspan="2" class="text-center text-muted">Sem anotações</td>';
+                                classStats.appendChild(row);
+                            }
+                        }
+                        
+                        // Verificar se o dataset tem imagens suficientes para treinamento
+                        const startTrainingBtn = document.getElementById('startTrainingBtn');
+                        const trainWarning = document.getElementById('trainingWarning');
+                        
+                        if (startTrainingBtn && trainWarning) {
+                            if (data.annotated_images >= 10) {
+                                startTrainingBtn.disabled = false;
+                                trainWarning.style.display = 'none';
+                            } else {
+                                startTrainingBtn.disabled = true;
+                                trainWarning.style.display = 'block';
+                                trainWarning.textContent = `Necessário pelo menos 10 imagens anotadas para iniciar treinamento. Atual: ${data.annotated_images}`;
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Erro ao processar status do dataset:", error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar status do dataset:', error);
+                });
+        }
+
+        // Exibe mensagem de alerta para o usuário
+        function showAlert(message, type = 'info', timeout = 5000) {
+            const alertsContainer = document.getElementById('alertsContainer');
+            
+            if (!alertsContainer) {
+                console.error("Container de alertas não encontrado!");
+                console.log("Mensagem:", message);
+                return;
+            }
+            
+            // Criar elemento de alerta
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            `;
+            
+            // Adicionar ao container
+            alertsContainer.appendChild(alertDiv);
+            
+            // Remover após timeout
+            if (timeout > 0) {
+                setTimeout(() => {
+                    alertDiv.classList.remove('show');
+                    setTimeout(() => alertDiv.remove(), 300);
+                }, timeout);
+            }
+        }
+
+        // Carrega a lista de imagens do batch atual
+        function loadBatchImages() {
+            console.log("Carregando imagens do dataset");
+            fetch('/api/dataset/images')
+                .then(response => response.json())
+                .then(data => {
+                    datasetImages = data.images || [];
+                    displayBatchImages();
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar imagens:', error);
+                    showAlert('Erro ao carregar imagens do dataset.', 'danger');
+                });
+        }
+
+        // Exibe as imagens do batch na interface
+        function displayBatchImages() {
+            const container = document.getElementById('batchImageContainer');
+            
+            if (!container) {
+                console.error("Container de imagens não encontrado!");
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            if (!datasetImages || datasetImages.length === 0) {
+                container.innerHTML = '<p class="text-center text-muted">Nenhuma imagem disponível.</p>';
+                return;
+            }
+            
+            // Criar grade de imagens em miniatura
+            datasetImages.forEach((img, index) => {
+                const imgDiv = document.createElement('div');
+                imgDiv.className = 'col-md-3 col-sm-4 col-6 mb-3';
+                
+                const hasAnnotations = img.has_annotations;
+                const badgeClass = hasAnnotations ? 'bg-success' : 'bg-danger';
+                const badgeText = hasAnnotations ? img.annotations_count || 'Anotado' : 'Sem anotações';
+                
+                imgDiv.innerHTML = `
+                    <div class="card">
+                        <img src="${img.thumbnail}" class="card-img-top batch-thumbnail" alt="${img.filename}">
+                        <div class="card-body p-2">
+                            <p class="card-text small text-truncate">${img.filename}</p>
+                            <span class="badge ${badgeClass} position-absolute top-0 end-0 m-1">
+                                ${badgeText}
+                            </span>
+                            <button class="btn btn-sm btn-primary w-100" onclick="loadBatchImageToEditor(${index})">
+                                Editar
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(imgDiv);
+            });
+        }
+
+        // Inicia o processo de treinamento
+        function startTraining() {
+            const epochsInput = document.getElementById('epochsInput');
+            const batchSizeInput = document.getElementById('batchSizeInput');
+            
+            const epochs = parseInt(epochsInput.value);
+            const batchSize = parseInt(batchSizeInput.value);
+            
+            if (isNaN(epochs) || epochs < 1 || isNaN(batchSize) || batchSize < 1) {
+                showAlert('Por favor, insira valores válidos para épocas e tamanho de batch.', 'warning');
+                return;
+            }
+            
+            const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+            document.getElementById('confirmMessage').textContent = 
+                `Tem certeza que deseja iniciar o treinamento com ${epochs} épocas e batch size ${batchSize}? ` +
+                'Este processo pode levar vários minutos.';
+            
+            const confirmBtn = document.getElementById('confirmActionBtn');
+            confirmBtn.onclick = function() {
+                confirmModal.hide();
+                
+                // Mostrar modal de carregamento
+                let bsLoadingModal;
+                const loadingModal = document.getElementById('loadingModal');
+                if (loadingModal) {
+                    const loadingMessage = document.getElementById('loadingMessage');
+                    if (loadingMessage) {
+                        loadingMessage.textContent = 'Iniciando treinamento...';
+                    }
+                    bsLoadingModal = new bootstrap.Modal(loadingModal);
+                    bsLoadingModal.show();
+                }
+                
+                // Enviar solicitação de treinamento
+                fetch('/iniciar_treinamento', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        epochs: epochs,
+                        batch_size: batchSize,
+                        save_checkpoints: document.getElementById('saveIntervalCheck').checked
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Garantir que o modal seja fechado
+                    if (bsLoadingModal) {
+                        bsLoadingModal.hide();
+                        
+                        // Certificar-se de que o backdrop também seja removido
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) {
+                            backdrop.remove();
+                        }
+                        document.body.classList.remove('modal-open');
+                        document.body.style.overflow = '';
+                        document.body.style.paddingRight = '';
+                    }
+                    
+                    if (data.success) {
+                        showAlert('Treinamento iniciado com sucesso! ID do treinamento: ' + data.training_id, 'success');
+                        
+                        // Redirecionar para página de monitoramento
+                        setTimeout(() => {
+                            window.location.href = `/treinamento/monitor/${data.training_id}`;
+                        }, 2000);
+                    } else {
+                        showAlert('Erro ao iniciar treinamento: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    // Garantir que o modal seja fechado mesmo em caso de erro
+                    if (bsLoadingModal) {
+                        bsLoadingModal.hide();
+                        
+                        // Certificar-se de que o backdrop também seja removido
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) {
+                            backdrop.remove();
+                        }
+                        document.body.classList.remove('modal-open');
+                        document.body.style.overflow = '';
+                        document.body.style.paddingRight = '';
+                    }
+                    showAlert('Erro ao iniciar treinamento: ' + error, 'danger');
+                    console.error('Erro:', error);
+                });
+            };
+            
+            confirmModal.show();
+        }
+
+        // Exporta o dataset atual para uso externo
+        function exportDataset() {
+            const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+            document.getElementById('loadingMessage').textContent = 'Preparando dataset para exportação...';
+            loadingModal.show();
+            
+            fetch('/api/dataset/export')
+                .then(response => {
+                    loadingModal.hide();
+                    
+                    if (response.ok) {
+                        return response.blob();
+                    } else {
+                        throw new Error('Erro ao exportar dataset');
+                    }
+                })
+                .then(blob => {
+                    // Criar link para download
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'epi_dataset.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // Limpar
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    showAlert('Dataset exportado com sucesso!', 'success');
+                })
+                .catch(error => {
+                    loadingModal.hide();
+                    showAlert('Erro ao exportar dataset: ' + error, 'danger');
+                    console.error('Erro:', error);
+                });
+        }
+
+        // Importa um dataset existente
+        function importDataset(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+            document.getElementById('loadingMessage').textContent = 'Importando dataset...';
+            loadingModal.show();
+            
+            const formData = new FormData();
+            formData.append('dataset_file', file);
+            
+            fetch('/api/dataset/import', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingModal.hide();
+                
+                if (data.success) {
+                    showAlert('Dataset importado com sucesso! ' + 
+                            `${data.images_count} imagens e ${data.annotations_count} anotações importadas.`, 'success');
+                    loadDatasetStatus();
+                    loadBatchImages();
+                } else {
+                    showAlert('Erro ao importar dataset: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                loadingModal.hide();
+                showAlert('Erro ao importar dataset: ' + error, 'danger');
+                console.error('Erro:', error);
+            });
+        }
+
+        // Limpa todo o dataset após confirmação
+        function clearDataset() {
+            const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+            document.getElementById('confirmMessage').textContent = 
+                'ATENÇÃO: Esta ação irá excluir TODAS as imagens e anotações do dataset atual. ' + 
+                'Esta operação não pode ser desfeita. Tem certeza que deseja continuar?';
+            
+            const confirmBtn = document.getElementById('confirmActionBtn');
+            confirmBtn.className = 'btn btn-danger';
+            confirmBtn.textContent = 'Sim, excluir tudo';
+            
+            confirmBtn.onclick = function() {
+                confirmModal.hide();
+                
+                let bsLoadingModal;
+                const loadingModal = document.getElementById('loadingModal');
+                if (loadingModal) {
+                    const loadingMessage = document.getElementById('loadingMessage');
+                    if (loadingMessage) {
+                        loadingMessage.textContent = 'Limpando dataset...';
+                    }
+                    bsLoadingModal = new bootstrap.Modal(loadingModal);
+                    bsLoadingModal.show();
+                }
+                
+                fetch('/api/dataset/clear', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Garantir que o modal seja fechado
+                    if (bsLoadingModal) {
+                        bsLoadingModal.hide();
+                        
+                        // Certificar-se de que o backdrop também seja removido
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) {
+                            backdrop.remove();
+                        }
+                        document.body.classList.remove('modal-open');
+                        document.body.style.overflow = '';
+                        document.body.style.paddingRight = '';
+                    }
+                    
+                    if (data.success) {
+                        showAlert('Dataset limpo com sucesso!', 'success');
+                        loadDatasetStatus();
+                        loadBatchImages();
+                    } else {
+                        showAlert('Erro ao limpar dataset: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    // Garantir que o modal seja fechado mesmo em caso de erro
+                    if (bsLoadingModal) {
+                        bsLoadingModal.hide();
+                        
+                        // Certificar-se de que o backdrop também seja removido
+                        const backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) {
+                            backdrop.remove();
+                        }
+                        document.body.classList.remove('modal-open');
+                        document.body.style.overflow = '';
+                        document.body.style.paddingRight = '';
+                    }
+                    
+                    showAlert('Erro ao limpar dataset: ' + error, 'danger');
+                    console.error('Erro:', error);
+                });
+                
+                // Restaurar botão
+                confirmBtn.className = 'btn btn-primary';
+                confirmBtn.textContent = 'Confirmar';
+            };
+            
+            confirmModal.show();
+        }
+
+        // Detecção automática de objetos na imagem atual
+        function detectObjects() {
+            if (!currentImage) {
+                showAlert('Nenhuma imagem carregada.', 'warning');
+                return;
+            }
+            
+            let bsLoadingModal;
+            const loadingModal = document.getElementById('loadingModal');
+            if (loadingModal) {
+                const loadingMessage = document.getElementById('loadingMessage');
+                if (loadingMessage) {
+                    loadingMessage.textContent = 'Detectando objetos...';
+                }
+                bsLoadingModal = new bootstrap.Modal(loadingModal);
+                bsLoadingModal.show();
+            }
+            
+            // Enviar imagem para detecção
+            fetch('/api/detection/detect', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    image_data: currentImage.src
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Garantir que o modal seja fechado
+                if (bsLoadingModal) {
+                    bsLoadingModal.hide();
+                    
+                    // Certificar-se de que o backdrop também seja removido
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                }
+                
+                if (data.success && data.detections && data.detections.length > 0) {
+                    // Converter detecções para formato de anotações
+                    const newAnnotations = data.detections.map(det => ({
+                        x: det.x / currentImage.width,
+                        y: det.y / currentImage.height,
+                        width: det.width / currentImage.width,
+                        height: det.height / currentImage.height,
+                        class: det.class_name
+                    }));
+                    
+                    // Adicionar às anotações existentes
+                    annotations = [...annotations, ...newAnnotations];
+                    redrawCanvas();
+                    updateAnnotationList();
+                    
+                    showAlert(`${newAnnotations.length} objetos detectados automaticamente!`, 'success');
+                } else {
+                    showAlert('Nenhum objeto detectado na imagem.', 'info');
+                }
+            })
+            .catch(error => {
+                // Garantir que o modal seja fechado mesmo em caso de erro
+                if (bsLoadingModal) {
+                    bsLoadingModal.hide();
+                    
+                    // Certificar-se de que o backdrop também seja removido
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                }
+                showAlert('Erro na detecção automática: ' + error, 'danger');
+                console.error('Erro:', error);
+            });
+        }
+
+        // Monitora o progresso do treinamento em tempo real
+        function monitorTraining(trainingId) {
+            // Referências aos elementos da UI
+            const progressBar = document.getElementById('trainingProgressBar');
+            const statusText = document.getElementById('trainingStatus');
+            const metricsContainer = document.getElementById('metricsContainer');
+            const chartContainer = document.getElementById('trainingChart');
+            
+            let chart = null;
+            let trainingData = {
+                epochs: [],
+                mAP: [],
+                loss: []
+            };
+            
+            // Inicializar gráfico
+            function initChart() {
+                const ctx = chartContainer.getContext('2d');
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [
+                            {
+                                label: 'mAP',
+                                data: [],
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                borderWidth: 2,
+                                yAxisID: 'y'
+                            },
+                            {
+                                label: 'Loss',
+                                data: [],
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                borderWidth: 2,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'mAP'
+                                },
+                                min: 0,
+                                max: 1
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Loss'
+                                },
+                                min: 0,
+                                grid: {
+                                    drawOnChartArea: false
+                                }
+                            }
+                        },
+                        animation: false,
+                        responsive: true
+                    }
+                });
+            }
+            
+            // Atualizar gráfico com novos dados
+            function updateChart(data) {
+                if (!chart) {
+                    initChart();
+                }
+                
+                // Atualizar dados do gráfico
+                chart.data.labels = data.epochs;
+                chart.data.datasets[0].data = data.mAP;
+                chart.data.datasets[1].data = data.loss;
+                chart.update();
+            }
+            
+            // Função para buscar progresso
+            function fetchProgress() {
+                fetch(`/api/training/status/${trainingId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Atualizar status e progresso
+                            statusText.textContent = data.status;
+                            
+                            if (data.progress !== undefined) {
+                                progressBar.style.width = `${data.progress}%`;
+                                progressBar.textContent = `${Math.round(data.progress)}%`;
+                            }
+                            
+                            // Atualizar métricas
+                            if (data.metrics) {
+                                metricsContainer.innerHTML = '';
+                                Object.entries(data.metrics).forEach(([key, value]) => {
+                                    const metricDiv = document.createElement('div');
+                                    metricDiv.className = 'col-md-3 col-sm-6 mb-3';
+                                    metricDiv.innerHTML = `
+                                        <div class="card">
+                                            <div class="card-body text-center">
+                                                <h5 class="card-title">${key}</h5>
+                                                <p class="card-text fs-4">${typeof value === 'number' ? value.toFixed(4) : value}</p>
+                                            </div>
+                                        </div>
+                                    `;
+                                    metricsContainer.appendChild(metricDiv);
+                                });
+                            }
+                            
+                            // Atualizar dados do gráfico
+                            if (data.chart_data) {
+                                trainingData = data.chart_data;
+                                updateChart(trainingData);
+                            }
+                            
+                            // Verificar se o treinamento terminou
+                            if (data.status === 'Concluído' || data.status === 'Erro') {
+                                clearInterval(progressInterval);
+                                
+                                if (data.status === 'Concluído') {
+                                    showAlert('Treinamento concluído com sucesso!', 'success');
+                                    
+                                    // Mostrar botão para aplicar modelo
+                                    const applyModelBtn = document.getElementById('applyModelBtn');
+                                    if (applyModelBtn) {
+                                        applyModelBtn.classList.remove('d-none');
+                                    }
+                                } else {
+                                    showAlert('Erro no treinamento: ' + (data.error || 'Erro desconhecido'), 'danger');
+                                }
+                            }
+                        } else {
+                            statusText.textContent = 'Erro ao buscar status';
+                            showAlert('Erro ao buscar progresso: ' + data.error, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro ao monitorar treinamento:', error);
+                    });
+            }
+            
+            // Inicializar chart
+            initChart();
+            
+            // Buscar progresso inicialmente e depois a cada 5 segundos
+            fetchProgress();
+            const progressInterval = setInterval(fetchProgress, 5000);
+            
+            // Retornar referência ao intervalo para permitir cancelá-lo posteriormente
+            return progressInterval;
+        }
+        
+        // Função para aplicar o modelo treinado
+        function applyTrainedModel(trainingId) {
+            const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+            document.getElementById('confirmMessage').textContent = 
+                'Deseja aplicar este modelo treinado como o modelo ativo para detecção? ' + 
+                'O modelo anterior será substituído.';
+            
+            const confirmBtn = document.getElementById('confirmActionBtn');
+            confirmBtn.onclick = function() {
+                confirmModal.hide();
+                
+                const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+                document.getElementById('loadingMessage').textContent = 'Aplicando modelo treinado...';
+                loadingModal.show();
+                
+                fetch('/api/model/apply', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        training_id: trainingId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    loadingModal.hide();
+                    
+                    if (data.success) {
+                        showAlert('Modelo aplicado com sucesso! O detector agora está usando o novo modelo.', 'success');
+                        
+                        // Opcional: redirecionar para a página principal após alguns segundos
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 3000);
+                    } else {
+                        showAlert('Erro ao aplicar modelo: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    loadingModal.hide();
+                    showAlert('Erro ao aplicar modelo: ' + error, 'danger');
+                    console.error('Erro:', error);
+                });
+            };
+            
+            confirmModal.show();
+        }
+
+        // Atualiza o seletor de classes disponíveis
+        function updateClassSelector() {
+            // Buscar classes disponíveis da API
+            fetch('/api/classes')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.classes) {
+                        availableClasses = data.classes;
+                        
+                        // Atualizar o seletor de classes
+                        const classSelect = document.getElementById('classSelect');
+                        
+                        // Manter a opção "selecione uma classe"
+                        const defaultOption = classSelect.options[0];
+                        classSelect.innerHTML = '';
+                        classSelect.appendChild(defaultOption);
+                        
+                        // Adicionar as classes disponíveis
+                        availableClasses.forEach(className => {
+                            const option = document.createElement('option');
+                            option.value = className;
+                            option.textContent = className.charAt(0).toUpperCase() + className.slice(1);
+                            classSelect.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao buscar classes disponíveis:', error);
+                    // Usar classes padrão se falhar
+                    availableClasses = ['pessoa', 'capacete', 'luva', 'colete', 'oculos', 'mascara', 'bota'];
+                });
+        }
+
+        // Função para lidar com o upload de imagem individual
+        function handleImageUpload(event) {
+            console.log("Upload de imagem individual");
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // Verificar se é uma imagem
+            if (!file.type.match('image.*')) {
+                showAlert('Por favor, selecione um arquivo de imagem válido.', 'danger');
+                return;
+            }
+            
+            // Carregar a imagem no canvas
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                loadImageToCanvas(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // Função para carregar uma imagem no canvas de anotação
+        function loadImageToCanvas(imageData) {
+            console.log("Carregando imagem no canvas");
+            const canvas = document.getElementById('annotationCanvas');
+            if (!canvas) {
+                console.error("Canvas não encontrado!");
+                return;
+            }
+            
+            const img = new Image();
+            img.onload = function() {
+                // Configurar o canvas
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                
+                // Ajustar o tamanho visual do canvas para caber na tela
+                const containerWidth = canvas.parentElement.offsetWidth || 800;
+                if (img.width > containerWidth) {
+                    const ratio = containerWidth / img.width;
+                    canvas.style.width = containerWidth + 'px';
+                    canvas.style.height = (img.height * ratio) + 'px';
+                } else {
+                    canvas.style.width = img.width + 'px';
+                    canvas.style.height = img.height + 'px';
+                }
+                
+                // Desenhar a imagem
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // Atualizar a imagem atual
+                const filename = document.getElementById('imageUpload')?.files?.[0]?.name || 'imagem.jpg';
+                currentImage = {
+                    src: imageData,
+                    width: img.width,
+                    height: img.height,
+                    filename: filename
+                };
+                
+                // Limpar as anotações
+                annotations = [];
+                if (typeof updateAnnotationList === 'function') {
+                    updateAnnotationList();
+                }
+            };
+            img.src = imageData;
+        }
+        
+        // Função para lidar com o upload de múltiplas imagens em lote
+        function handleBatchUpload(event) {
+            console.log("Upload de imagens em lote");
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            
+            const loadingModal = document.getElementById('loadingModal');
+            let bsLoadingModal;
+            
+            if (loadingModal) {
+                const loadingMessage = document.getElementById('loadingMessage');
+                if (loadingMessage) {
+                    loadingMessage.textContent = 'Enviando imagens...';
+                }
+                bsLoadingModal = new bootstrap.Modal(loadingModal);
+                bsLoadingModal.show();
+            } else {
+                console.error("Modal de carregamento não encontrado");
+            }
+            
+            // Preparar os dados para envio
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('images', files[i]);
+            }
+            
+            // Enviar imagens para o servidor
+            fetch('/api/dataset/upload-batch', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Garantir que o modal seja fechado
+                if (bsLoadingModal) {
+                    bsLoadingModal.hide();
+                    
+                    // Certificar-se de que o backdrop também seja removido
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                }
+                
+                if (data.success) {
+                    showAlert(`${data.uploaded_count || files.length} imagens enviadas com sucesso!`, 'success');
+                    loadBatchImages();
+                } else {
+                    showAlert('Erro no upload: ' + (data.error || 'Erro desconhecido'), 'danger');
+                }
+            })
+            .catch(error => {
+                // Garantir que o modal seja fechado mesmo em caso de erro
+                if (bsLoadingModal) {
+                    bsLoadingModal.hide();
+                    
+                    // Certificar-se de que o backdrop também seja removido
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                }
+                
+                console.error('Erro no upload:', error);
+                showAlert('Erro no upload: ' + error, 'danger');
+            });
+        }
+        
+        // Função para carregar uma imagem do lote para o editor
+        function loadBatchImageToEditor(index) {
+            console.log("Carregando imagem do lote para o editor", index);
+            if (!datasetImages || !datasetImages[index]) {
+                console.error("Imagem não encontrada no índice", index);
+                return;
+            }
+            
+            const img = datasetImages[index];
+            
+            // Mudar para a aba de anotação
+            const annotationTab = document.querySelector('[data-bs-target="#nav-annotation"]');
+            if (annotationTab && typeof bootstrap !== 'undefined') {
+                const bsTab = new bootstrap.Tab(annotationTab);
+                bsTab.show();
+            }
+            
+            // Carregar imagem da API
+            fetch(`/api/dataset/image/${img.id}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        loadImageToCanvas(data.image_data);
+                        
+                        // Carregar anotações
+                        if (data.annotations && data.annotations.length > 0) {
+                            annotations = data.annotations;
+                            redrawCanvas();
+                            if (typeof updateAnnotationList === 'function') {
+                                updateAnnotationList();
+                            }
+                        }
+                    } else {
+                        showAlert('Erro ao carregar imagem: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar imagem:', error);
+                    showAlert('Erro ao carregar imagem para edição', 'danger');
+                });
+        }
+        
+        // Função para atualizar a lista de anotações
+        function updateAnnotationList() {
+            console.log("Atualizando lista de anotações");
+            const annotationList = document.getElementById('annotationList');
+            if (!annotationList) {
+                console.error("Lista de anotações não encontrada");
+                return;
+            }
+            
+            // Limpar lista atual
+            annotationList.innerHTML = '';
+            
+            // Verificar se há anotações
+            if (!annotations || annotations.length === 0) {
+                annotationList.innerHTML = '<div class="text-center text-muted">Nenhuma anotação adicionada</div>';
+                return;
+            }
+            
+            // Adicionar cada anotação à lista
+            annotations.forEach((anno, index) => {
+                const item = document.createElement('div');
+                item.className = 'annotation-item d-flex justify-content-between align-items-center p-2 border-bottom';
+                
+                const className = anno.class || 'Sem classe';
+                const coords = `x:${anno.x}, y:${anno.y}, w:${anno.width}, h:${anno.height}`;
+                
+                item.innerHTML = `
+                    <div>
+                        <span class="badge bg-primary me-2">${className}</span>
+                        <small class="text-muted">${coords}</small>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="removeAnnotation(${index})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                `;
+                
+                annotationList.appendChild(item);
+            });
+        }
+        
+        // Função para remover uma anotação
+        function removeAnnotation(index) {
+            console.log("Removendo anotação", index);
+            if (index >= 0 && index < annotations.length) {
+                annotations.splice(index, 1);
+                redrawCanvas();
+                updateAnnotationList();
+            }
+        }
+        
+        // Função para salvar uma anotação
+        function saveAnnotation() {
+            console.log("Salvando anotação");
+            if (!currentBox) {
+                showAlert("Desenhe uma caixa de anotação primeiro!", "warning");
+                return;
+            }
+            
+            // Obter a classe selecionada
+            const classSelect = document.getElementById('classSelect');
+            if (!classSelect) {
+                console.error("Seletor de classes não encontrado!");
+                return;
+            }
+            
+            const className = classSelect.value;
+            if (!className) {
+                showAlert("Selecione uma classe para a anotação!", "warning");
+                return;
+            }
+            
+            // Adicionar a classe ao box atual
+            currentBox.class = className;
+            
+            // Adicionar às anotações
+            annotations.push(currentBox);
+            
+            // Resetar o box atual
+            currentBox = null;
+            
+            // Redesenhar e atualizar interface
+            redrawCanvas();
+            updateAnnotationList();
+            
+            // Desabilitar botão de salvar
+            const saveButton = document.getElementById('saveAnnotationBtn');
+            if (saveButton) saveButton.disabled = true;
+            
+            showAlert(`Anotação de "${className}" adicionada com sucesso!`, "success", 2000);
+        }
+        
+        // Função para salvar todas as anotações no servidor
+        function saveAllAnnotations() {
+            console.log("Salvando todas as anotações");
+            if (!currentImage) {
+                showAlert("Nenhuma imagem carregada!", "warning");
+                return;
+            }
+            
+            if (annotations.length === 0) {
+                showAlert("Nenhuma anotação para salvar!", "warning");
+                return;
+            }
+            
+            // Destacar o botão para feedback visual
+            const saveAllBtn = document.getElementById('saveAllAnnotationsBtn');
+            if (saveAllBtn) {
+                saveAllBtn.classList.add('disabled');
+                saveAllBtn.innerHTML = '<i class="bi bi-hourglass"></i> Salvando...';
+            }
+            
+            // Mostrar modal de carregamento
+            const loadingModal = document.getElementById('loadingModal');
+            let bsLoadingModal;
+            
+            if (loadingModal) {
+                const loadingMessage = document.getElementById('loadingMessage');
+                if (loadingMessage) {
+                    loadingMessage.textContent = 'Salvando anotações...';
+                }
+                bsLoadingModal = new bootstrap.Modal(loadingModal);
+                bsLoadingModal.show();
+            }
+            
+            // Preparar dados para envio
+            const data = {
+                filename: currentImage.filename,
+                image_data: currentImage.src,
+                image_width: currentImage.width,
+                image_height: currentImage.height,
+                annotations: annotations
+            };
+            
+            // Enviar para o servidor
+            fetch('/api/annotations/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                // Garantir que o modal seja fechado
+                if (bsLoadingModal) {
+                    bsLoadingModal.hide();
+                    
+                    // Certificar-se de que o backdrop também seja removido
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                }
+                
+                if (result.success) {
+                    // Mostrar uma mensagem de sucesso mais destacada
+                    const successAlert = document.createElement('div');
+                    successAlert.className = 'alert alert-success text-center p-3 mt-3';
+                    successAlert.innerHTML = `
+                        <h5><i class="bi bi-check-circle-fill"></i> Anotações salvas com sucesso!</h5>
+                        <p>A imagem <strong>${currentImage.filename}</strong> foi classificada e todas as anotações foram salvas.</p>
+                        <p>Agora você pode carregar uma nova imagem para anotar.</p>
+                    `;
+                    
+                    // Inserir a mensagem logo abaixo do canvas
+                    const canvasContainer = document.querySelector('.canvas-container');
+                    if (canvasContainer) {
+                        // Limpar mensagens antigas
+                        const oldAlerts = canvasContainer.parentNode.querySelectorAll('.alert-success');
+                        oldAlerts.forEach(alert => alert.remove());
+                        
+                        // Adicionar nova mensagem
+                        canvasContainer.insertAdjacentElement('afterend', successAlert);
+                        
+                        // Rolar para a mensagem
+                        successAlert.scrollIntoView({ behavior: 'smooth' });
+                        
+                        // Remover após 5 segundos
+                        setTimeout(() => {
+                            successAlert.remove();
+                        }, 5000);
+                    }
+                    
+                    showAlert('Imagem classificada e anotações salvas com sucesso!', 'success');
+                    loadDatasetStatus();
+                    loadBatchImages();
+                } else {
+                    showAlert('Erro ao salvar anotações: ' + (result.error || 'Erro desconhecido'), 'danger');
+                }
+                
+                // Restaurar o botão
+                if (saveAllBtn) {
+                    saveAllBtn.classList.remove('disabled');
+                    saveAllBtn.innerHTML = '<i class="bi bi-save fs-4"></i> SALVAR ESTA IMAGEM E TODAS AS ANOTAÇÕES';
+                }
+            })
+            .catch(error => {
+                // Garantir que o modal seja fechado mesmo em caso de erro
+                if (bsLoadingModal) {
+                    bsLoadingModal.hide();
+                    
+                    // Certificar-se de que o backdrop também seja removido
+                    const backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) {
+                        backdrop.remove();
+                    }
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                }
+                
+                console.error('Erro:', error);
+                showAlert('Erro ao salvar anotações: ' + error, 'danger');
+                
+                // Restaurar o botão
+                if (saveAllBtn) {
+                    saveAllBtn.classList.remove('disabled');
+                    saveAllBtn.innerHTML = '<i class="bi bi-save fs-4"></i> SALVAR ESTA IMAGEM E TODAS AS ANOTAÇÕES';
+                }
+            });
+        }
+    </script>
+</body>
+</html> 

@@ -1,0 +1,15 @@
+path: .  # caminho raiz do dataset
+train: train/images  # caminho para imagens de treino
+val: train/images    # caminho para imagens de validação
+
+# Classes para detecção
+names:
+  0: capacete
+  1: oculos
+  2: mascara
+  3: luvas
+  4: colete
+  5: pessoa
+  6: cone_seguranca
+  7: maquinaria
+  8: veiculo 

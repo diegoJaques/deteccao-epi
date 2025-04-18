@@ -1,0 +1,94 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Ambiente Virtual
+venv/
+env/
+ENV/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# YOLO
+runs/
+*.pt
+dataset_treinamento/
+dataset/
+
+# Logs
+*.log
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Diretórios de uploads e resultados
+uploads/
+resultados/
+
+# Arquivos de desenvolvimento local
+.env
+.env.local
+.env.*.local
+instance/
+.webassets-cache
+
+# Arquivos de modelo
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.pb
+*.h5
+models/
+weights/
+
+# Banco de dados
+*.db
+*.sqlite
+*.sqlite3
+
+# Arquivos de mídia
+uploads/
+media/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.ico
+*.mov
+*.mp4
+*.wmv
+*.avi
+*.mkv
+
+# Misc
+.AppleDouble
+.LSOverride
+Desktop.ini
+$RECYCLE.BIN/
+*.bak
+*.swp
+*.tmp 

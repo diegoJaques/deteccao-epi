@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detector de Objetos com YOLO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            padding-top: 20px;
+            background-color: #f8f9fa;
+        }
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .card-header {
+            background-color: #343a40;
+            color: white;
+        }
+        .detection-box {
+            position: absolute;
+            border: 2px solid;
+            border-radius: 3px;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+        .result-image-container {
+            position: relative;
+            max-width: 100%;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        .result-image {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        .model-card {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .model-card:hover {
+            transform: translateY(-5px);
+        }
+        .model-card.active {
+            border: 2px solid #198754;
+        }
+        .spinner-border {
+            width: 1rem;
+            height: 1rem;
+            margin-right: 0.5rem;
+        }
+        #dragArea {
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 25px;
+            text-align: center;
+            background-color: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #dragArea:hover, #dragArea.dragover {
+            border-color: #0d6efd;
+            background-color: #e8f0fe;
+        }
+        #dragArea i {
+            font-size: 48px;
+            color: #adb5bd;
+        }
+        .confidence-slider {
+            width: 100%;
+        }
+        .badge {
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-12 text-center">
+                <h1 class="display-4">Detector de Objetos com YOLO</h1>
+                <p class="lead">Utilize modelos YOLO para detectar objetos em imagens</p>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Coluna para Upload de Imagem e Detecção -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-camera"></i> Detecção de Objetos</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Área de Upload/Drag-and-Drop -->
+                        <div id="dragArea" class="mb-4">
+                            <i class="bi bi-cloud-arrow-up"></i>
+                            <h5 class="mt-3">Arraste e solte uma imagem aqui</h5>
+                            <p class="text-muted">ou</p>
+                            <input type="file" id="imageInput" class="d-none" accept="image/*">
+                            <button class="btn btn-primary" id="uploadBtn">Selecionar Imagem</button>
+                        </div>
+                        
+                        <!-- Configurações de Detecção -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="confidenceSlider" class="form-label">Confiança Mínima: <span id="confidenceValue">0.25</span></label>
+                                <input type="range" class="form-range confidence-slider" id="confidenceSlider" 
+                                      min="0.05" max="0.95" step="0.05" value="0.25">
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <button id="detectBtn" class="btn btn-success w-100" disabled>
+                                    <i class="bi bi-search"></i> Detectar Objetos
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Prévia da Imagem -->
+                        <div id="imagePreview" class="mt-3 d-none">
+                            <h5>Imagem Selecionada:</h5>
+                            <img id="previewImg" class="img-fluid rounded" src="" alt="Prévia da imagem">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Resultados da Detecção -->
+                <div id="resultsCard" class="card d-none">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-clipboard-data"></i> Resultados da Detecção</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="detectionStats" class="mb-3">
+                            <!-- Estatísticas preenchidas via JavaScript -->
+                        </div>
+                        
+                        <div id="resultImageContainer" class="result-image-container">
+                            <img id="resultImage" class="result-image" src="" alt="Imagem com detecções">
+                            <!-- Caixas de detecção serão adicionadas aqui -->
+                        </div>
+                        
+                        <div id="detectionsList" class="mt-3">
+                            <h5>Lista de Objetos Detectados:</h5>
+                            <ul id="detectionsUl" class="list-group">
+                                <!-- Itens da lista serão adicionados aqui -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Coluna para Informações do Sistema e Modelos -->
+            <div class="col-md-4">
+                <!-- Modelos Disponíveis -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-box"></i> Modelos Disponíveis</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="modelsLoading" class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                            <span>Carregando modelos...</span>
+                        </div>
+                        <div id="modelsList" class="row g-3">
+                            <!-- Modelos serão adicionados aqui -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Informações do Sistema -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Informações do Sistema</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="systemInfoLoading" class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                            <span>Carregando informações...</span>
+                        </div>
+                        <div id="systemInfo" class="d-none">
+                            <!-- Informações do sistema serão adicionadas aqui -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Carregamento -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center p-5">
+                    <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                    <h5 id="loadingModalText">Processando imagem...</h5>
+                    <p class="text-muted" id="loadingModalSubtext">Isso pode levar alguns segundos.</p>
+                    <p id="loadingProgress" class="mt-3 d-none">Aguarde mais um momento...</p>
+                    <button id="cancelLoadingBtn" class="btn btn-outline-secondary mt-3">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elementos DOM
+            const imageInput = document.getElementById('imageInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const dragArea = document.getElementById('dragArea');
+            const previewImg = document.getElementById('previewImg');
+            const imagePreview = document.getElementById('imagePreview');
+            const detectBtn = document.getElementById('detectBtn');
+            const resultsCard = document.getElementById('resultsCard');
+            const resultImage = document.getElementById('resultImage');
+            const detectionsList = document.getElementById('detectionsUl');
+            const detectionStats = document.getElementById('detectionStats');
+            const confidenceSlider = document.getElementById('confidenceSlider');
+            const confidenceValue = document.getElementById('confidenceValue');
+            const modelsList = document.getElementById('modelsList');
+            const modelsLoading = document.getElementById('modelsLoading');
+            const systemInfo = document.getElementById('systemInfo');
+            const systemInfoLoading = document.getElementById('systemInfoLoading');
+            const cancelLoadingBtn = document.getElementById('cancelLoadingBtn');
+            const loadingProgress = document.getElementById('loadingProgress');
+            
+            // Modal de carregamento
+            const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+            
+            // Configurar botão de cancelamento do modal
+            cancelLoadingBtn.addEventListener('click', () => {
+                loadingModal.hide();
+                console.log("Carregamento cancelado pelo usuário");
+                
+                // Recarregar dados para garantir que estamos sincronizados
+                loadModels();
+                loadSystemInfo();
+            });
+            
+            // Função para mostrar progresso no modal de carregamento
+            function updateLoadingProgress(seconds) {
+                loadingProgress.classList.remove('d-none');
+                loadingProgress.textContent = `Operação em andamento... (${seconds}s)`;
+            }
+            
+            // Função para esconder o progresso
+            function hideLoadingProgress() {
+                loadingProgress.classList.add('d-none');
+            }
+            
+            // Variáveis de estado
+            let selectedFile = null;
+            let currentModelName = null;
+            
+            // Event Listeners para upload de imagem
+            uploadBtn.addEventListener('click', () => imageInput.click());
+            
+            imageInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    selectedFile = e.target.files[0];
+                    displayImagePreview(selectedFile);
+                }
+            });
+            
+            // Drag and Drop
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dragArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dragArea.addEventListener(eventName, () => {
+                    dragArea.classList.add('dragover');
+                }, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dragArea.addEventListener(eventName, () => {
+                    dragArea.classList.remove('dragover');
+                }, false);
+            });
+            
+            dragArea.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                
+                if (files.length > 0 && files[0].type.startsWith('image/')) {
+                    selectedFile = files[0];
+                    displayImagePreview(selectedFile);
+                } else {
+                    alert('Por favor, selecione apenas arquivos de imagem.');
+                }
+            }, false);
+            
+            // Exibir prévia da imagem
+            function displayImagePreview(file) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    imagePreview.classList.remove('d-none');
+                    detectBtn.removeAttribute('disabled');
+                };
+                
+                reader.readAsDataURL(file);
+            }
+            
+            // Slider de confiança
+            confidenceSlider.addEventListener('input', () => {
+                confidenceValue.textContent = confidenceSlider.value;
+            });
+            
+            // Detectar objetos na imagem
+            detectBtn.addEventListener('click', () => {
+                if (!selectedFile) {
+                    alert('Por favor, selecione uma imagem primeiro.');
+                    return;
+                }
+                
+                detectObjects(selectedFile, parseFloat(confidenceSlider.value));
+            });
+            
+            // Função para detectar objetos
+            function detectObjects(file, confidence) {
+                const formData = new FormData();
+                formData.append('imagem', file);
+                formData.append('confianca', confidence);
+                
+                // Exibir modal de carregamento
+                document.getElementById('loadingModalText').textContent = 'Processando imagem...';
+                document.getElementById('loadingModalSubtext').textContent = 'Isso pode levar alguns segundos.';
+                hideLoadingProgress();
+                loadingModal.show();
+                
+                // Contador para exibição de progresso
+                let segundos = 0;
+                const progressInterval = setInterval(() => {
+                    segundos++;
+                    updateLoadingProgress(segundos);
+                }, 1000);
+                
+                // Definir um timeout para garantir que o modal será fechado após 30 segundos
+                const timeoutId = setTimeout(() => {
+                    clearInterval(progressInterval);
+                    hideLoadingProgress();
+                    loadingModal.hide();
+                    alert('A operação está demorando muito tempo. Verifique se a imagem não é muito grande ou se o servidor está respondendo.');
+                }, 30000);
+                
+                // Enviar requisição
+                fetch('/detectar', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    clearTimeout(timeoutId); // Limpar o timeout quando receber qualquer resposta
+                    clearInterval(progressInterval); // Parar de atualizar o progresso
+                    hideLoadingProgress();
+                    
+                    if (!response.ok) {
+                        loadingModal.hide(); // Garantir que o modal seja fechado em caso de erro
+                        if (response.status === 415) {
+                            alert('Formato de arquivo não suportado. Use apenas imagens JPG, JPEG ou PNG.');
+                            throw new Error('Formato de arquivo não suportado');
+                        } else if (response.status === 413) {
+                            alert('A imagem é muito grande. O tamanho máximo permitido é 16MB.');
+                            throw new Error('Imagem muito grande');
+                        }
+                        throw response;
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Esconder modal de carregamento
+                    loadingModal.hide();
+                    
+                    if (data.status === 'sucesso') {
+                        displayResults(data);
+                    } else {
+                        alert('Erro: ' + data.mensagem);
+                    }
+                })
+                .catch(error => {
+                    // Garantir que o modal seja fechado em caso de erro
+                    loadingModal.hide();
+                    clearTimeout(timeoutId);
+                    clearInterval(progressInterval);
+                    hideLoadingProgress();
+                    
+                    console.error('Erro na detecção:', error);
+                    
+                    if (error.json) {
+                        error.json().then(errorData => {
+                            console.error('Detalhes do erro:', errorData);
+                            alert('Erro ao processar imagem: ' + (errorData.mensagem || 'Erro desconhecido'));
+                        }).catch(e => {
+                            console.error('Não foi possível processar a resposta de erro:', e);
+                            alert('Erro ao processar imagem. Verifique o console para mais detalhes.');
+                        });
+                    } else {
+                        alert('Erro ao processar imagem: ' + (error.message || 'Erro desconhecido'));
+                    }
+                });
+            }
+            
+            // Exibir resultados da detecção
+            function displayResults(data) {
+                // Mostrar card de resultados
+                resultsCard.classList.remove('d-none');
+                
+                // Definir imagem processada
+                if (data.url_imagem_processada) {
+                    resultImage.src = data.url_imagem_processada;
+                    console.log("Imagem processada carregada de:", data.url_imagem_processada);
+                } else if (data.imagem_processada) {
+                    // Fallback para o método antigo
+                    const imgPath = data.imagem_processada.replace(/^.*[\\\/]/, ''); // Pega apenas o nome do arquivo
+                    resultImage.src = `/resultados/${imgPath}`;
+                    console.log("Imagem processada (fallback) carregada de:", `/resultados/${imgPath}`);
+                } else {
+                    console.error("Nenhuma imagem processada disponível nos resultados");
+                    // Mostrar a imagem original se a processada não estiver disponível
+                    resultImage.src = data.url_imagem_original || "";
+                }
+                
+                // Limpar listas anteriores
+                detectionsList.innerHTML = '';
+                
+                // Adicionar estatísticas
+                detectionStats.innerHTML = `
+                    <div class="alert alert-info">
+                        <p class="mb-1"><strong>Modelo:</strong> ${data.modelo}</p>
+                        <p class="mb-1"><strong>Tempo de detecção:</strong> ${data.tempo_deteccao} segundos</p>
+                        <p class="mb-0"><strong>Total de detecções:</strong> ${data.total_deteccoes}</p>
+                    </div>
+                `;
+                
+                // Mostrar mensagem se não houver detecções
+                if (data.deteccoes.length === 0) {
+                    detectionsList.innerHTML = `
+                        <div class="alert alert-warning">
+                            Nenhum objeto detectado nesta imagem.
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Preencher lista de detecções
+                const classeCores = {}; // Para manter consistência nas cores
+                const cores = [
+                    '#FF3838', '#FF9D97', '#FF701F', '#FFB21D', '#CFD231', '#48F90A', 
+                    '#92CC17', '#3DDB86', '#1A9334', '#00D4BB', '#2C99A8', '#00C2FF', 
+                    '#344593', '#6473FF', '#0018EC', '#8438FF', '#520085', '#CB38FF', 
+                    '#FF95C8', '#FF37C7'
+                ];
+                let coreIndex = 0;
+                
+                // Agrupar por classe
+                const deteccoesPorClasse = {};
+                
+                data.deteccoes.forEach(deteccao => {
+                    const classe = deteccao.classe;
+                    
+                    if (!deteccoesPorClasse[classe]) {
+                        deteccoesPorClasse[classe] = [];
+                    }
+                    
+                    deteccoesPorClasse[classe].push(deteccao);
+                    
+                    // Atribuir uma cor para a classe se ainda não tiver
+                    if (!classeCores[classe]) {
+                        classeCores[classe] = cores[coreIndex % cores.length];
+                        coreIndex++;
+                    }
+                });
+                
+                // Criar elementos para cada classe
+                for (const classe in deteccoesPorClasse) {
+                    const deteccoes = deteccoesPorClasse[classe];
+                    const cor = classeCores[classe];
+                    
+                    const classeItem = document.createElement('li');
+                    classeItem.className = 'list-group-item';
+                    
+                    const header = document.createElement('div');
+                    header.className = 'd-flex justify-content-between align-items-center';
+                    
+                    const classeBadge = document.createElement('h6');
+                    classeBadge.innerHTML = `<span class="badge bg-primary" style="background-color: ${cor} !important;">${classe}</span> <span class="badge bg-secondary">${deteccoes.length}</span>`;
+                    
+                    const toggleBtn = document.createElement('button');
+                    toggleBtn.className = 'btn btn-sm btn-outline-secondary';
+                    toggleBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+                    
+                    header.appendChild(classeBadge);
+                    header.appendChild(toggleBtn);
+                    
+                    const detailsDiv = document.createElement('div');
+                    detailsDiv.className = 'mt-2 d-none';
+                    
+                    deteccoes.forEach((det, i) => {
+                        detailsDiv.innerHTML += `
+                            <div class="alert alert-light mb-1">
+                                <small>
+                                    <strong>ID:</strong> ${i+1} |
+                                    <strong>Confiança:</strong> ${(det.confianca * 100).toFixed(1)}% |
+                                    <strong>Posição:</strong> [${det.bbox.map(c => Math.round(c)).join(', ')}]
+                                </small>
+                            </div>
+                        `;
+                    });
+                    
+                    classeItem.appendChild(header);
+                    classeItem.appendChild(detailsDiv);
+                    
+                    detectionsList.appendChild(classeItem);
+                    
+                    // Adicionar listener para exibir/ocultar detalhes
+                    toggleBtn.addEventListener('click', () => {
+                        if (detailsDiv.classList.contains('d-none')) {
+                            detailsDiv.classList.remove('d-none');
+                            toggleBtn.innerHTML = '<i class="bi bi-chevron-up"></i>';
+                        } else {
+                            detailsDiv.classList.add('d-none');
+                            toggleBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+                        }
+                    });
+                }
+                
+                // Rolar para os resultados
+                resultsCard.scrollIntoView({ behavior: 'smooth' });
+            }
+            
+            // Carregar lista de modelos
+            function loadModels() {
+                modelsLoading.classList.remove('d-none');
+                modelsList.innerHTML = '';
+                
+                fetch('/modelos')
+                    .then(response => response.json())
+                    .then(data => {
+                        modelsLoading.classList.add('d-none');
+                        
+                        if (data.status === 'sucesso') {
+                            // Guardar modelo atual
+                            currentModelName = data.modelo_atual;
+                            
+                            if (data.modelos.length === 0) {
+                                modelsList.innerHTML = '<div class="col-12"><div class="alert alert-warning">Nenhum modelo disponível.</div></div>';
+                                return;
+                            }
+                            
+                            // Ordenar modelos: modelo atual primeiro, depois locais, depois disponíveis para download
+                            const modelos = data.modelos.sort((a, b) => {
+                                if (a.atual && !b.atual) return -1;
+                                if (!a.atual && b.atual) return 1;
+                                if (a.local && !b.local) return -1;
+                                if (!a.local && b.local) return 1;
+                                return a.nome.localeCompare(b.nome);
+                            });
+                            
+                            // Renderizar modelos
+                            modelos.forEach(modelo => {
+                                const modeloCard = document.createElement('div');
+                                modeloCard.className = `col-6 col-lg-6 ${modelo.atual ? 'active' : ''}`;
+                                
+                                let badgeHtml = '';
+                                if (modelo.atual) {
+                                    badgeHtml = '<span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-success">Atual</span>';
+                                } else if (!modelo.local) {
+                                    badgeHtml = '<span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">Download</span>';
+                                }
+                                
+                                const descricao = modelo.descricao || modelo.nome;
+                                const tamanho = modelo.tamanho_mb ? `${modelo.tamanho_mb} MB` : 'Tamanho desconhecido';
+                                
+                                modeloCard.innerHTML = `
+                                    <div class="card model-card position-relative ${modelo.atual ? 'active' : ''}">
+                                        ${badgeHtml}
+                                        <div class="card-body p-3">
+                                            <h6 class="card-title">${modelo.nome}</h6>
+                                            <p class="card-text small mb-0">${modelo.local ? `Local, ${tamanho}` : 'Disponível online'}</p>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                // Adicionar listener para seleção do modelo
+                                modeloCard.addEventListener('click', () => {
+                                    if (modelo.atual) return; // Modelo já selecionado
+                                    
+                                    if (confirm(`Deseja carregar o modelo "${modelo.nome}"?`)) {
+                                        setModel(modelo.nome);
+                                    }
+                                });
+                                
+                                modelsList.appendChild(modeloCard);
+                            });
+                        } else {
+                            modelsList.innerHTML = `<div class="col-12"><div class="alert alert-danger">Erro ao carregar modelos: ${data.mensagem}</div></div>`;
+                        }
+                    })
+                    .catch(error => {
+                        modelsLoading.classList.add('d-none');
+                        modelsList.innerHTML = '<div class="col-12"><div class="alert alert-danger">Erro ao carregar lista de modelos.</div></div>';
+                        console.error('Erro:', error);
+                    });
+            }
+            
+            // Definir modelo
+            function setModel(modelName) {
+                // Exibir modal de carregamento
+                document.getElementById('loadingModalText').textContent = 'Carregando modelo...';
+                document.getElementById('loadingModalSubtext').textContent = 'Isso pode levar alguns segundos.';
+                hideLoadingProgress();
+                loadingModal.show();
+                
+                // Contador para exibição de progresso
+                let segundos = 0;
+                const progressInterval = setInterval(() => {
+                    segundos++;
+                    updateLoadingProgress(segundos);
+                }, 1000);
+                
+                // Definir um timeout para garantir que o modal será fechado após 30 segundos
+                const timeoutId = setTimeout(() => {
+                    clearInterval(progressInterval);
+                    hideLoadingProgress();
+                    loadingModal.hide();
+                    alert('A operação está demorando muito tempo. O servidor pode estar com problemas.');
+                }, 30000);
+                
+                // Garantir que o modal será fechado após 5 segundos, independente da resposta
+                // Isso resolve o problema de quando o servidor processa a solicitação mas o cliente não recebe a resposta
+                const forceCloseId = setTimeout(() => {
+                    clearInterval(progressInterval);
+                    hideLoadingProgress();
+                    loadingModal.hide();
+                    loadModels();
+                    loadSystemInfo();
+                    console.log("Modal de carregamento fechado forçadamente após 5 segundos");
+                }, 5000);
+                
+                fetch('/definir_modelo', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        modelo: modelName
+                    })
+                })
+                .then(response => {
+                    clearTimeout(timeoutId); // Limpar o timeout quando receber qualquer resposta
+                    clearTimeout(forceCloseId); // Limpar o timeout de fechamento forçado
+                    clearInterval(progressInterval); // Parar de atualizar o progresso
+                    hideLoadingProgress();
+                    
+                    if (!response.ok) {
+                        loadingModal.hide(); // Garantir que o modal seja fechado em caso de erro
+                        throw new Error(`Erro ao carregar modelo: Código ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    loadingModal.hide();
+                    
+                    if (data.status === 'sucesso') {
+                        alert(`Modelo "${modelName}" carregado com sucesso!`);
+                        // Recarregar modelos e informações do sistema
+                        loadModels();
+                        loadSystemInfo();
+                    } else {
+                        alert(`Erro ao carregar modelo: ${data.mensagem}`);
+                    }
+                })
+                .catch(error => {
+                    // Garantir que o modal seja fechado em caso de erro
+                    loadingModal.hide();
+                    clearTimeout(timeoutId);
+                    clearTimeout(forceCloseId);
+                    clearInterval(progressInterval);
+                    hideLoadingProgress();
+                    
+                    console.error('Erro ao definir modelo:', error);
+                    alert('Erro ao carregar modelo: ' + (error.message || 'Erro desconhecido'));
+                    
+                    // Recarregar dados mesmo em caso de erro para atualizar o estado
+                    loadModels();
+                    loadSystemInfo();
+                });
+            }
+            
+            // Carregar informações do sistema
+            function loadSystemInfo() {
+                systemInfoLoading.classList.remove('d-none');
+                systemInfo.classList.add('d-none');
+                
+                // Forçar fechamento do modal de carregamento (caso esteja aberto)
+                loadingModal.hide();
+                
+                // Definir timeout para a requisição
+                const timeoutId = setTimeout(() => {
+                    console.error('Timeout ao carregar informações do sistema');
+                    systemInfoLoading.classList.add('d-none');
+                    systemInfo.classList.remove('d-none');
+                    systemInfo.innerHTML = `
+                        <div class="alert alert-warning">
+                            Tempo esgotado ao carregar informações. 
+                            <button class="btn btn-sm btn-outline-primary" onclick="loadSystemInfo()">Tentar novamente</button>
+                        </div>
+                    `;
+                }, 5000);
+                
+                fetch('/ping')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Erro ao verificar status do servidor: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(pingData => {
+                        console.log('Servidor online:', pingData.timestamp);
+                        
+                        // Se o servidor está online, buscar informações completas
+                        return fetch('/info');
+                    })
+                    .then(response => {
+                        clearTimeout(timeoutId);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Erro ao carregar informações: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        clearTimeout(timeoutId);
+                        systemInfoLoading.classList.add('d-none');
+                        systemInfo.classList.remove('d-none');
+                        
+                        let gpuInfo = data.hardware.gpu_disponivel 
+                            ? `${data.hardware.dispositivo} (${data.hardware.memoria_gpu_gb} GB)` 
+                            : 'Não disponível';
+                        
+                        systemInfo.innerHTML = `
+                            <ul class="list-group">
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div class="ms-2 me-auto">
+                                        <div class="fw-bold">Modelo Atual</div>
+                                        ${data.modelo.nome || 'Nenhum modelo carregado'}
+                                    </div>
+                                    <span class="badge ${data.modelo.carregado ? 'bg-success' : 'bg-danger'} rounded-pill">
+                                        ${data.modelo.carregado ? 'Carregado' : 'Não carregado'}
+                                    </span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div class="ms-2 me-auto">
+                                        <div class="fw-bold">Hardware</div>
+                                        ${data.hardware.dispositivo} (${data.hardware.cpu_threads} threads)
+                                    </div>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div class="ms-2 me-auto">
+                                        <div class="fw-bold">GPU</div>
+                                        ${gpuInfo}
+                                    </div>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div class="ms-2 me-auto">
+                                        <div class="fw-bold">Arquivos</div>
+                                        Upload: ${data.sistema.arquivos_upload}, Resultados: ${data.sistema.arquivos_resultados}
+                                    </div>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div class="ms-2 me-auto">
+                                        <div class="fw-bold">Status Sistema</div>
+                                        ${data.status}
+                                    </div>
+                                    <span class="badge bg-success rounded-pill">Online</span>
+                                </li>
+                            </ul>
+                        `;
+                    })
+                    .catch(error => {
+                        clearTimeout(timeoutId);
+                        console.error('Erro ao carregar informações do sistema:', error);
+                        systemInfoLoading.classList.add('d-none');
+                        systemInfo.classList.remove('d-none');
+                        systemInfo.innerHTML = `
+                            <div class="alert alert-danger">
+                                Erro ao carregar informações do sistema. 
+                                <button class="btn btn-sm btn-outline-danger" onclick="loadSystemInfo()">Tentar novamente</button>
+                            </div>
+                        `;
+                    });
+            }
+            
+            // Inicializar
+            loadModels();
+            loadSystemInfo();
+            
+            // Atualizar periodicamente as informações do sistema
+            setInterval(loadSystemInfo, 30000);
+        });
+    </script>
+</body>
+</html> 

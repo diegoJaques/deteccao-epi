@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 import io
 import base64
 import yaml
+import cv2
 
 # Importar o módulo de treinamento
 from treinamento import trainer
@@ -128,121 +129,74 @@ def carregar_modelo(nome_modelo=None):
 
 # Função para fazer detecção em uma imagem
 def detectar_objetos(imagem_path, conf=0.25):
-    """
-    Detecta objetos em uma imagem usando o modelo YOLO carregado.
-    
-    Args:
-        imagem_path: Caminho para a imagem
-        conf: Confiança mínima para detecções (0-1)
-    
-    Returns:
-        Um dicionário com os resultados da detecção
-    """
-    global modelo_atual
-    
-    # Verifica se o modelo está carregado
-    if modelo_atual is None:
-        logger.info("Modelo não carregado. Tentando carregar modelo padrão...")
-        modelo_atual = carregar_modelo()
-        if modelo_atual is None:
-            return {"erro": "Não foi possível carregar o modelo de detecção"}
-    
     try:
-        # Verifica se a imagem existe
-        if not os.path.exists(imagem_path):
-            return {"erro": f"Imagem não encontrada: {imagem_path}"}
+        # Obter o mapeamento de classes diretamente do modelo carregado
+        if modelo_atual is None:
+            logger.error("Erro Crítico: Tentando detectar sem modelo carregado.")
+            raise Exception("Nenhum modelo YOLO está carregado no momento.")
         
-        # Realiza a detecção
-        inicio = time.time()
-        logger.info(f"Iniciando detecção em {imagem_path} com confiança {conf}")
-        
-        # Configuração para salvar os resultados
-        timestamp = int(time.time())
-        nome_base = os.path.basename(imagem_path)
-        nome_sem_ext = os.path.splitext(nome_base)[0]
-        resultado_final_path = os.path.join(RESULTS_FOLDER, f"result_{nome_sem_ext}_{timestamp}.jpg")
-        
-        # Realiza a detecção com o YOLO
-        resultados = modelo_atual.predict(
-            source=imagem_path, 
-            conf=conf, 
-            save=True, 
-            save_txt=True,
-            project=RESULTS_FOLDER,
-            name=f"detect_{timestamp}",
-            exist_ok=True,
-            verbose=True
-        )
-        
-        tempo_deteccao = time.time() - inicio
-        logger.info(f"Detecção concluída em {tempo_deteccao:.2f} segundos")
-        
-        # Obter a imagem com as detecções desenhadas
-        imagem_resultado = None
-        
-        # YOLO salva em uma pasta estruturada como: {project}/{name}/predict.jpg ou similar
-        diretorio_resultado = os.path.join(RESULTS_FOLDER, f"detect_{timestamp}")
-        
-        # Procurar a imagem resultado
-        for arquivo in os.listdir(diretorio_resultado):
-            if arquivo.endswith(('.jpg', '.jpeg', '.png')):
-                imagem_resultado = os.path.join(diretorio_resultado, arquivo)
-                break
-        
-        # Se não encontrou, tenta o nome padrão
-        if not imagem_resultado or not os.path.exists(imagem_resultado):
-            logger.warning(f"Imagem resultado não encontrada em {diretorio_resultado}")
-            imagem_resultado = os.path.join(diretorio_resultado, nome_base)
-            
-            # Tenta alternativas
-            if not os.path.exists(imagem_resultado):
-                logger.warning(f"Tentando alternativa predict_{nome_base}")
-                imagem_resultado = os.path.join(diretorio_resultado, f"predict_{nome_base}")
-        
-        # Copia o resultado para um local mais acessível e com nome padronizado
-        if imagem_resultado and os.path.exists(imagem_resultado):
-            import shutil
-            shutil.copy(imagem_resultado, resultado_final_path)
-            logger.info(f"Imagem resultado copiada para {resultado_final_path}")
+        # Verificar se o modelo carregado possui o atributo 'names'
+        if not hasattr(modelo_atual, 'names') or not modelo_atual.names:
+            logger.error(f"Erro: Modelo '{nome_modelo_atual}' não possui mapeamento de classes (.names).")
+            # Como fallback, tentar usar um mapeamento genérico (mas isso não é ideal)
+            class_mapping = {i: f"Classe {i}" for i in range(80)} # Supõe 80 classes (COCO)
         else:
-            logger.error(f"Imagem resultado não encontrada após a detecção")
-            resultado_final_path = None
+             class_mapping = modelo_atual.names
+             
+        logger.info(f"Usando mapeamento de classes do modelo '{nome_modelo_atual}': {class_mapping}")
+        
+        # Carrega a imagem
+        img = cv2.imread(imagem_path)
+        if img is None:
+            raise Exception("Erro ao carregar a imagem")
+
+        # Realiza a detecção
+        results = modelo_atual(img)[0]
         
         # Processa os resultados
-        deteccoes = []
-        for r in resultados:
-            for box in r.boxes:
-                class_id = int(box.cls.item())
-                class_name = r.names[class_id]
-                confianca = float(box.conf.item())
-                coordenadas = box.xyxy.tolist()[0]  # [x1, y1, x2, y2]
-                
-                deteccoes.append({
-                    "classe": class_name,
-                    "classe_id": class_id,
-                    "confianca": round(confianca, 3),
-                    "bbox": [round(c, 2) for c in coordenadas]
-                })
+        detections = []
+        for result in results.boxes.data.tolist():
+            x1, y1, x2, y2, conf, class_id = result
+            
+            # Converte o ID da classe para inteiro
+            class_id = int(class_id)
+            
+            # Obtém o nome da classe do mapeamento - USANDO O INTEIRO class_id COMO CHAVE
+            class_name = class_mapping.get(class_id, f"Classe Desconhecida {class_id}") # Nome padrão mais claro
+            
+            # Log para debug
+            logger.info(f"Detectado: ID da classe = {class_id}, Tipo do ID = {type(class_id)}")
+            logger.info(f"Procurando por chave: {class_id} (tipo: {type(class_id)}) no mapeamento.")
+            logger.info(f"Nome da classe encontrado: {class_name}")
+            
+            # Adiciona a detecção à lista
+            detections.append({
+                'class_name': class_name,  # Nome da classe
+                'confidence': round(conf * 100, 2),
+                'bbox': [round(x) for x in [x1, y1, x2, y2]]
+            })
+            
+            # Desenha a caixa delimitadora
+            cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            
+            # Adiciona o rótulo
+            label = f"{class_name} {conf:.2%}"
+            cv2.putText(img, label, (int(x1), int(y1 - 10)), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        # Salva a imagem processada
+        output_path = os.path.join(RESULTS_FOLDER, os.path.basename(imagem_path))
+        cv2.imwrite(output_path, img)
         
-        # Prepara o resultado final
-        resultado = {
-            "status": "sucesso",
-            "imagem_original": imagem_path,
-            "imagem_processada": resultado_final_path,
-            "tempo_deteccao": round(tempo_deteccao, 3),
-            "total_deteccoes": len(deteccoes),
-            "deteccoes": deteccoes,
-            "modelo": nome_modelo_atual,
-            "diretorio_resultado": diretorio_resultado
+        return {
+            'detections': detections,
+            'output_path': output_path
         }
         
-        logger.info(f"Detecção concluída: {len(deteccoes)} objetos encontrados")
-        return resultado
-    
     except Exception as e:
-        logger.error(f"Erro durante a detecção: {str(e)}")
+        logging.error(f"Erro durante a detecção: {str(e)}")
         traceback.print_exc()
-        return {"erro": str(e), "detalhes": traceback.format_exc()}
+        raise
 
 # Rotas da API
 @app.route('/')
@@ -367,125 +321,58 @@ def definir_modelo():
 
 @app.route('/detectar', methods=['POST'])
 def detectar():
-    """Endpoint para detectar objetos em uma imagem enviada"""
     try:
-        # Verificar se o arquivo foi enviado
+        # Verifica se há arquivo na requisição
         if 'imagem' not in request.files:
-            logger.warning("Requisição inválida: Nenhuma imagem enviada")
-            return jsonify({
-                "status": "erro",
-                "mensagem": "Nenhuma imagem enviada"
-            }), 400
-        
+            return jsonify({"erro": "Nenhum arquivo enviado"}), 400
+            
         arquivo = request.files['imagem']
-        
-        # Verificar se um arquivo foi selecionado
         if arquivo.filename == '':
-            logger.warning("Requisição inválida: Nome de arquivo vazio")
-            return jsonify({
-                "status": "erro",
-                "mensagem": "Nenhuma imagem selecionada"
-            }), 400
-        
-        # Verificar se a extensão é permitida
-        if not extensao_permitida(arquivo.filename):
-            logger.warning(f"Formato de arquivo não suportado: {arquivo.filename}")
-            return jsonify({
-                "status": "erro",
-                "mensagem": "Formato de arquivo não suportado. Use JPG, JPEG ou PNG"
-            }), 415  # Unsupported Media Type
-        
-        # Verificar o tamanho do arquivo
-        tamanho_arquivo = 0
-        arquivo.seek(0, os.SEEK_END)
-        tamanho_arquivo = arquivo.tell()
+            return jsonify({"erro": "Nome do arquivo vazio"}), 400
+            
+        # Verifica a extensão do arquivo
+        if not arquivo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            return jsonify({"erro": "Formato de arquivo não suportado"}), 400
+            
+        # Verifica o tamanho do arquivo (limite de 10MB)
+        if len(arquivo.read()) > 10 * 1024 * 1024:  # 10MB em bytes
+            return jsonify({"erro": "Arquivo muito grande (máximo 10MB)"}), 400
         arquivo.seek(0)  # Reset do ponteiro do arquivo
         
-        max_tamanho = app.config['MAX_CONTENT_LENGTH']
-        if tamanho_arquivo > max_tamanho:
-            tamanho_mb = tamanho_arquivo / (1024 * 1024)
-            max_tamanho_mb = max_tamanho / (1024 * 1024)
-            logger.warning(f"Arquivo muito grande: {tamanho_mb:.2f}MB (máximo: {max_tamanho_mb:.2f}MB)")
-            return jsonify({
-                "status": "erro",
-                "mensagem": f"Arquivo muito grande ({tamanho_mb:.2f}MB). O tamanho máximo é {max_tamanho_mb:.2f}MB."
-            }), 413  # Payload Too Large
-        
-        # Salvar o arquivo
-        try:
-            filename = secure_filename(arquivo.filename)
-            nome_base, extensao = os.path.splitext(filename)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            novo_filename = f"{nome_base}_{timestamp}{extensao}"
+        # Obtém o nível de confiança da requisição (padrão 0.25)
+        conf = float(request.form.get('conf', 0.25))
+        if not 0 <= conf <= 1:
+            return jsonify({"erro": "Nível de confiança deve estar entre 0 e 1"}), 400
             
-            caminho_arquivo = os.path.join(app.config['UPLOAD_FOLDER'], novo_filename)
-            arquivo.save(caminho_arquivo)
-            logger.info(f"Imagem salva em {caminho_arquivo}")
-        except Exception as e:
-            logger.error(f"Erro ao salvar o arquivo: {str(e)}")
-            return jsonify({
-                "status": "erro",
-                "mensagem": f"Erro ao salvar o arquivo: {str(e)}"
-            }), 500
+        # Salva o arquivo com timestamp para evitar conflitos
+        timestamp = int(time.time())
+        nome_arquivo = f"upload_{timestamp}_{secure_filename(arquivo.filename)}"
+        caminho_arquivo = os.path.join(UPLOAD_FOLDER, nome_arquivo)
+        arquivo.save(caminho_arquivo)
         
-        # Obter confiança do request (opcional)
-        confianca = request.form.get('confianca', 0.25)
-        try:
-            confianca = float(confianca)
-            if confianca < 0.01 or confianca > 0.99:
-                logger.warning(f"Valor de confiança fora dos limites: {confianca}, ajustando para 0.25")
-                confianca = 0.25
-        except ValueError:
-            logger.warning(f"Valor de confiança inválido: {confianca}, usando 0.25")
-            confianca = 0.25
+        # Realiza a detecção
+        inicio = time.time()
+        resultados = detectar_objetos(caminho_arquivo, conf)
+        tempo_deteccao = time.time() - inicio
         
-        logger.info(f"Iniciando detecção com confiança: {confianca}")
+        # Log detalhado das detecções ANTES de enviar
+        logger.info(f"Detecções processadas pela função detectar_objetos: {resultados['detections']}")
         
-        # Verificar se o modelo está carregado
-        if modelo_atual is None:
-            logger.warning("Modelo não carregado. Tentando carregar modelo padrão...")
-            modelo = carregar_modelo()
-            if modelo is None:
-                logger.error("Não foi possível carregar um modelo padrão")
-                return jsonify({
-                    "status": "erro",
-                    "mensagem": "Não foi possível carregar o modelo de detecção. Por favor, tente definir um modelo manualmente."
-                }), 500
+        # Prepara a resposta
+        resposta = {
+            "status": "sucesso",
+            "url_imagem_original": f"/uploads/{nome_arquivo}",
+            "url_imagem_processada": f"/resultados/{os.path.basename(resultados['output_path'])}",
+            "tempo_deteccao": round(tempo_deteccao, 2),
+            "total_deteccoes": len(resultados['detections']),
+            "deteccoes": resultados['detections']
+        }
         
-        # Detectar objetos na imagem
-        resultados = detectar_objetos(caminho_arquivo, conf=confianca)
-        
-        if "erro" in resultados:
-            logger.error(f"Erro na detecção: {resultados['erro']}")
-            return jsonify({
-                "status": "erro",
-                "mensagem": resultados["erro"]
-            }), 500
-        
-        # Ajustar os caminhos para URLs relativas
-        if resultados.get("imagem_processada"):
-            arquivo_resultado = os.path.basename(resultados["imagem_processada"])
-            resultados["url_imagem_processada"] = f"/resultados/{arquivo_resultado}"
-        else:
-            logger.warning("Imagem processada não disponível nos resultados")
-            resultados["url_imagem_processada"] = None
-        
-        # Converter caminhos absolutos para relativos nas URLs
-        arquivo_original = os.path.basename(resultados["imagem_original"])
-        resultados["url_imagem_original"] = f"/uploads/{arquivo_original}"
-        
-        # Retornar resultados
-        logger.info(f"Retornando resultados da detecção: {resultados['total_deteccoes']} objetos")
-        return jsonify(resultados)
+        return jsonify(resposta)
         
     except Exception as e:
         logger.error(f"Erro durante a detecção: {str(e)}")
-        traceback.print_exc()
-        return jsonify({
-            "status": "erro",
-            "mensagem": str(e),
-            "detalhes": traceback.format_exc()
-        }), 500
+        return jsonify({"erro": str(e)}), 500
 
 @app.route('/info', methods=['GET'])
 def info_sistema():
@@ -536,12 +423,24 @@ def info_sistema():
 
 @app.route('/ping', methods=['GET'])
 def ping():
-    """Rota simples para verificar se o servidor está online"""
-    return jsonify({
-        "status": "ok",
-        "mensagem": "Servidor online",
-        "timestamp": datetime.now().isoformat()
-    })
+    """Endpoint para verificar se o servidor está online"""
+    try:
+        return jsonify({
+            "status": "success",
+            "message": "Server is running",
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Erro no endpoint ping: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                             'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 # Rotas para treinamento
 @app.route('/treinar', methods=['GET'])

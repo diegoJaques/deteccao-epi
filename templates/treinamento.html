@@ -494,10 +494,17 @@
         let isDrawing = false;
         let startX, startY;
         let availableClasses = [];
-        
+        let bsLoadingModal = null; // Variável global para o modal de carregamento
+
         // Esperar o DOM carregar completamente
         document.addEventListener('DOMContentLoaded', () => {
             console.log("DOM carregado completamente");
+            
+            // Inicializar o modal de carregamento
+            const loadingModal = document.getElementById('loadingModal');
+            if (loadingModal) {
+                bsLoadingModal = new bootstrap.Modal(loadingModal);
+            }
             
             // Inicializar a interface
             setupInterface();
@@ -570,7 +577,7 @@
             
             isDrawing = true;
         }
-        
+
         function handleMouseMove(e) {
             if (!isDrawing || !currentImage) return;
             
@@ -664,7 +671,7 @@
             const saveButton = document.getElementById('saveAnnotationBtn');
             if (saveButton) saveButton.disabled = false;
         }
-        
+
         // Redesenha o canvas com a imagem e todas as anotações
         function redrawCanvas() {
             if (!currentImage) return;
@@ -686,30 +693,28 @@
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 
                 // Desenhar anotações
-                annotations.forEach(annotation => {
-                    ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+                annotations.forEach((annotation, index) => {
+                    ctx.strokeStyle = '#00ff00';
                     ctx.lineWidth = 2;
-                    ctx.strokeRect(
-                        annotation.x, 
-                        annotation.y, 
-                        annotation.width, 
-                        annotation.height
-                    );
-                    
-                    // Adicionar label
-                    if (annotation.class) {
-                        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                        ctx.fillRect(
-                            annotation.x, 
-                            annotation.y - 20, 
-                            Math.max(50, annotation.class.length * 8), 
-                            20
-                        );
-                        ctx.fillStyle = 'white';
+                    ctx.strokeRect(annotation.x, annotation.y, annotation.width, annotation.height);
+
+                    // Desenhar rótulo
+                    if (annotation.class_name) {  // Usar class_name ao invés de class
+                        ctx.fillStyle = '#00ff00';
                         ctx.font = '12px Arial';
+                        
+                        // Calcular largura do fundo do texto
+                        const textWidth = Math.max(50, annotation.class_name.length * 8);  // Usar class_name ao invés de class
+                        
+                        // Desenhar fundo do texto
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                        ctx.fillRect(annotation.x, annotation.y - 20, textWidth, 20);
+                        
+                        // Desenhar texto
+                        ctx.fillStyle = '#ffffff';
                         ctx.fillText(
-                            annotation.class, 
-                            annotation.x + 5, 
+                            annotation.class_name,  // Usar class_name ao invés de class
+                            annotation.x + 5,
                             annotation.y - 5
                         );
                     }
@@ -725,7 +730,7 @@
                 .then(response => response.json())
                 .then(data => {
                     try {
-                        // Atualizar estatísticas
+                    // Atualizar estatísticas
                         const totalImages = document.getElementById('totalImages');
                         const annotatedImages = document.getElementById('annotatedImages');
                         const totalAnnotations = document.getElementById('totalAnnotations');
@@ -733,63 +738,63 @@
                         if (totalImages) totalImages.textContent = data.total_images || 0;
                         if (annotatedImages) annotatedImages.textContent = data.annotated_images || 0;
                         if (totalAnnotations) totalAnnotations.textContent = data.total_annotations || 0;
-                        
-                        // Atualizar progresso
-                        const progressBar = document.getElementById('annotationProgress');
+                    
+                    // Atualizar progresso
+                    const progressBar = document.getElementById('annotationProgress');
                         if (progressBar) {
-                            if (data.total_images > 0) {
-                                const percentage = Math.round((data.annotated_images / data.total_images) * 100);
-                                progressBar.style.width = `${percentage}%`;
-                                progressBar.textContent = `${percentage}%`;
-                                
-                                // Alterar cor baseado no progresso
-                                if (percentage < 30) {
-                                    progressBar.className = 'progress-bar bg-danger';
-                                } else if (percentage < 70) {
-                                    progressBar.className = 'progress-bar bg-warning';
-                                } else {
-                                    progressBar.className = 'progress-bar bg-success';
-                                }
-                            } else {
-                                progressBar.style.width = '0%';
-                                progressBar.textContent = '0%';
-                                progressBar.className = 'progress-bar bg-danger';
-                            }
-                        }
+                    if (data.total_images > 0) {
+                        const percentage = Math.round((data.annotated_images / data.total_images) * 100);
+                        progressBar.style.width = `${percentage}%`;
+                        progressBar.textContent = `${percentage}%`;
                         
-                        // Atualizar estatísticas por classe
-                        const classStats = document.getElementById('classStatistics');
+                        // Alterar cor baseado no progresso
+                        if (percentage < 30) {
+                            progressBar.className = 'progress-bar bg-danger';
+                        } else if (percentage < 70) {
+                            progressBar.className = 'progress-bar bg-warning';
+                        } else {
+                            progressBar.className = 'progress-bar bg-success';
+                        }
+                    } else {
+                        progressBar.style.width = '0%';
+                        progressBar.textContent = '0%';
+                        progressBar.className = 'progress-bar bg-danger';
+                            }
+                    }
+                    
+                    // Atualizar estatísticas por classe
+                    const classStats = document.getElementById('classStatistics');
                         if (classStats) {
-                            classStats.innerHTML = '';
-                            
-                            if (data.class_counts && Object.keys(data.class_counts).length > 0) {
-                                Object.entries(data.class_counts).forEach(([className, count]) => {
-                                    const row = document.createElement('tr');
-                                    row.innerHTML = `
-                                        <td>${className}</td>
-                                        <td>${count}</td>
-                                    `;
-                                    classStats.appendChild(row);
-                                });
-                            } else {
-                                const row = document.createElement('tr');
-                                row.innerHTML = '<td colspan="2" class="text-center text-muted">Sem anotações</td>';
-                                classStats.appendChild(row);
+                    classStats.innerHTML = '';
+                    
+                    if (data.class_counts && Object.keys(data.class_counts).length > 0) {
+                        Object.entries(data.class_counts).forEach(([className, count]) => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${className}</td>
+                                <td>${count}</td>
+                            `;
+                            classStats.appendChild(row);
+                        });
+                    } else {
+                        const row = document.createElement('tr');
+                        row.innerHTML = '<td colspan="2" class="text-center text-muted">Sem anotações</td>';
+                        classStats.appendChild(row);
                             }
-                        }
-                        
-                        // Verificar se o dataset tem imagens suficientes para treinamento
-                        const startTrainingBtn = document.getElementById('startTrainingBtn');
-                        const trainWarning = document.getElementById('trainingWarning');
-                        
+                    }
+                    
+                    // Verificar se o dataset tem imagens suficientes para treinamento
+                    const startTrainingBtn = document.getElementById('startTrainingBtn');
+                    const trainWarning = document.getElementById('trainingWarning');
+                    
                         if (startTrainingBtn && trainWarning) {
-                            if (data.annotated_images >= 10) {
-                                startTrainingBtn.disabled = false;
-                                trainWarning.style.display = 'none';
-                            } else {
-                                startTrainingBtn.disabled = true;
-                                trainWarning.style.display = 'block';
-                                trainWarning.textContent = `Necessário pelo menos 10 imagens anotadas para iniciar treinamento. Atual: ${data.annotated_images}`;
+                    if (data.annotated_images >= 10) {
+                        startTrainingBtn.disabled = false;
+                        trainWarning.style.display = 'none';
+                    } else {
+                        startTrainingBtn.disabled = true;
+                        trainWarning.style.display = 'block';
+                        trainWarning.textContent = `Necessário pelo menos 10 imagens anotadas para iniciar treinamento. Atual: ${data.annotated_images}`;
                             }
                         }
                     } catch (error) {
@@ -887,7 +892,7 @@
                 `;
                 
                 container.appendChild(imgDiv);
-            });
+                });
         }
 
         // Inicia o processo de treinamento
@@ -1142,83 +1147,85 @@
         // Detecção automática de objetos na imagem atual
         function detectObjects() {
             if (!currentImage) {
-                showAlert('Nenhuma imagem carregada.', 'warning');
+                showToast('Nenhuma imagem carregada para detecção.', 'warning');
                 return;
             }
-            
-            let bsLoadingModal;
-            const loadingModal = document.getElementById('loadingModal');
-            if (loadingModal) {
-                const loadingMessage = document.getElementById('loadingMessage');
-                if (loadingMessage) {
-                    loadingMessage.textContent = 'Detectando objetos...';
-                }
-                bsLoadingModal = new bootstrap.Modal(loadingModal);
-                bsLoadingModal.show();
-            }
-            
-            // Enviar imagem para detecção
-            fetch('/api/detection/detect', {
+
+            bsLoadingModal.show(); // Mostrar modal de carregamento
+
+            const formData = new FormData();
+            formData.append('file', currentImage);
+            formData.append('conf', document.getElementById('confidence').value);
+
+            fetch('/detectar', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    image_data: currentImage.src
-                })
+                body: formData
             })
             .then(response => response.json())
             .then(data => {
-                // Garantir que o modal seja fechado
-                if (bsLoadingModal) {
-                    bsLoadingModal.hide();
-                    
-                    // Certificar-se de que o backdrop também seja removido
-                    const backdrop = document.querySelector('.modal-backdrop');
-                    if (backdrop) {
-                        backdrop.remove();
-                    }
-                    document.body.classList.remove('modal-open');
-                    document.body.style.overflow = '';
-                    document.body.style.paddingRight = '';
-                }
-                
-                if (data.success && data.detections && data.detections.length > 0) {
-                    // Converter detecções para formato de anotações
-                    const newAnnotations = data.detections.map(det => ({
-                        x: det.x / currentImage.width,
-                        y: det.y / currentImage.height,
-                        width: det.width / currentImage.width,
-                        height: det.height / currentImage.height,
-                        class: det.class_name
-                    }));
-                    
-                    // Adicionar às anotações existentes
-                    annotations = [...annotations, ...newAnnotations];
+                console.log("Resposta completa do servidor:", data); // Log da resposta completa
+                if (data.status === 'success') {
+                    showToast('Detecção concluída com sucesso!', 'success');
+                    imageOriginal = data.image_original;
+                    imageProcessed = data.image_processada;
+
+                    loadImage(imageProcessed, true); // Carrega a imagem processada no canvas
+
+                    // Limpa anotações existentes antes de adicionar novas
+                    clearAnnotations(false); // false para não limpar o canvas
+
+                    const deteccoes = data.detections || [];
+                    console.log("Detecções recebidas:", deteccoes); // Log das detecções
+
+                    deteccoes.forEach(det => {
+                        console.log("Processando detecção (det):", det); // Log de cada objeto de detecção
+                        
+                        // Verifica se a classe existe e atribui um nome padrão caso contrário
+                        const className = det.class_name || det.class || "Classe desconhecida"; 
+                        console.log("Nome da classe encontrado (className):", className); // Log do nome da classe extraído
+
+                        const confidence = det.confidence || det.conf || 0;
+                        const box = det.box || det.bbox; // Aceita 'box' ou 'bbox'
+
+                        if (!box) {
+                            console.warn("Detecção sem bounding box:", det);
+                            return; // Pula esta detecção se não houver caixa delimitadora
+                        }
+
+                        const x_center = box[0];
+                        const y_center = box[1];
+                        const width = box[2];
+                        const height = box[3];
+
+                        const annotation = {
+                            class_name: className,
+                            confidence: confidence,
+                            x: x_center - width / 2, // Converte centro para canto superior esquerdo
+                            y: y_center - height / 2,
+                            width: width,
+                            height: height,
+                            id: Date.now().toString() + Math.random().toString(16) // ID único
+                        };
+                        
+                        console.log("Anotação criada:", annotation); // Log da anotação antes de adicionar
+
+                        currentAnnotations.push(annotation);
+                    });
+
+                    // Redesenha o canvas APÓS adicionar todas as novas anotações
                     redrawCanvas();
-                    updateAnnotationList();
-                    
-                    showAlert(`${newAnnotations.length} objetos detectados automaticamente!`, 'success');
+
                 } else {
-                    showAlert('Nenhum objeto detectado na imagem.', 'info');
+                    console.error("Erro na detecção:", data.message);
+                    showToast(`Erro na detecção: ${data.message}`, 'danger');
                 }
             })
             .catch(error => {
-                // Garantir que o modal seja fechado mesmo em caso de erro
-                if (bsLoadingModal) {
-                    bsLoadingModal.hide();
-                    
-                    // Certificar-se de que o backdrop também seja removido
-                    const backdrop = document.querySelector('.modal-backdrop');
-                    if (backdrop) {
-                        backdrop.remove();
-                    }
-                    document.body.classList.remove('modal-open');
-                    document.body.style.overflow = '';
-                    document.body.style.paddingRight = '';
-                }
-                showAlert('Erro na detecção automática: ' + error, 'danger');
-                console.error('Erro:', error);
+                console.error('Erro ao chamar a API de detecção:', error);
+                showToast('Erro de comunicação com o servidor.', 'danger');
+            })
+            .finally(() => {
+                bsLoadingModal.hide(); // Esconder modal de carregamento
             });
         }
 
@@ -1673,7 +1680,7 @@
                 const item = document.createElement('div');
                 item.className = 'annotation-item d-flex justify-content-between align-items-center p-2 border-bottom';
                 
-                const className = anno.class || 'Sem classe';
+                const className = anno.class_name || 'Sem classe';
                 const coords = `x:${anno.x}, y:${anno.y}, w:${anno.width}, h:${anno.height}`;
                 
                 item.innerHTML = `
@@ -1722,7 +1729,7 @@
             }
             
             // Adicionar a classe ao box atual
-            currentBox.class = className;
+            currentBox.class_name = className;
             
             // Adicionar às anotações
             annotations.push(currentBox);

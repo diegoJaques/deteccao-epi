@@ -350,7 +350,7 @@ def analyze():
                 'status': 'error',
                 'message': 'Erro durante a detecção'
             }), 500
-
+            
         # 6. Salvar imagem processada
         result_filename = None
         if img_with_boxes is not None:
@@ -384,7 +384,7 @@ def analyze():
         detected_classes = list(set(det['class_name'] for det in detections))
         print(f"📊 Classes detectadas: {detected_classes}")
         print(f"📊 Total de detecções: {len(detections)}")
-
+            
         response = {
             'status': 'success',
             'message': 'Análise concluída com sucesso',
@@ -1353,10 +1353,10 @@ def detect_specific_epi():
             'success': False,
             'message': 'Dados incompletos. Esperado: image_path e epi_type'
         }), 400
-    
+
     image_path = data['image_path']
     epi_type = data['epi_type']
-    
+        
     # Verificar se o arquivo existe
     if not os.path.exists(image_path):
         return jsonify({
@@ -1371,13 +1371,13 @@ def detect_specific_epi():
             'success': False,
             'message': f'Falha ao carregar a imagem: {image_path}'
         }), 500
-    
+            
     # Verificar o tipo de EPI solicitado
     if epi_type == 'oculos_protecao':
         # Usar o detector específico para óculos
         detector = get_detector()
         result = detector.detect_specific_glasses(image)
-        
+            
         return jsonify({
             'success': True,
             'detected': result['detected'],

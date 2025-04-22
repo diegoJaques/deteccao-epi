@@ -470,73 +470,64 @@
                 // Agrupar por classe
                 const deteccoesPorClasse = {};
                 
-                data.deteccoes.forEach(deteccao => {
-                    const classe = deteccao.classe;
+                data.deteccoes.forEach((deteccao, index) => {
+                    // CORREÇÃO: Usar 'class_name' em vez de 'classe'
+                    const nomeClasse = deteccao.class_name;
+                    // CORREÇÃO: Acessar 'confidence' diretamente
+                    const confianca = deteccao.confidence;
                     
-                    if (!deteccoesPorClasse[classe]) {
-                        deteccoesPorClasse[classe] = [];
+                    console.log(`Processando detecção ${index}: Classe=${nomeClasse}, Confiança=${confianca}`); // Log para depuração
+                    
+                    if (!nomeClasse) {
+                        console.warn(`Detecção ${index} sem nome de classe definido.`);
+                        return; // Pular detecção sem nome de classe
+                    }
+
+                    if (!deteccoesPorClasse[nomeClasse]) {
+                        deteccoesPorClasse[nomeClasse] = [];
                     }
                     
-                    deteccoesPorClasse[classe].push(deteccao);
+                    deteccoesPorClasse[nomeClasse].push(deteccao);
                     
                     // Atribuir uma cor para a classe se ainda não tiver
-                    if (!classeCores[classe]) {
-                        classeCores[classe] = cores[coreIndex % cores.length];
+                    if (!classeCores[nomeClasse]) {
+                        classeCores[nomeClasse] = cores[coreIndex % cores.length];
                         coreIndex++;
                     }
                 });
                 
                 // Criar elementos para cada classe
-                for (const classe in deteccoesPorClasse) {
-                    const deteccoes = deteccoesPorClasse[classe];
-                    const cor = classeCores[classe];
+                for (const nomeClasse in deteccoesPorClasse) {
+                    const deteccoes = deteccoesPorClasse[nomeClasse];
+                    const cor = classeCores[nomeClasse];
                     
                     const classeItem = document.createElement('li');
                     classeItem.className = 'list-group-item';
                     
                     const header = document.createElement('div');
                     header.className = 'd-flex justify-content-between align-items-center';
+                    header.innerHTML = `
+                        <span class="badge text-white" style="background-color: ${cor}; font-size: 1rem;">${nomeClasse}</span>
+                        <span class="badge bg-secondary rounded-pill">${deteccoes.length}</span>
+                    `;
                     
-                    const classeBadge = document.createElement('h6');
-                    classeBadge.innerHTML = `<span class="badge bg-primary" style="background-color: ${cor} !important;">${classe}</span> <span class="badge bg-secondary">${deteccoes.length}</span>`;
-                    
-                    const toggleBtn = document.createElement('button');
-                    toggleBtn.className = 'btn btn-sm btn-outline-secondary';
-                    toggleBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
-                    
-                    header.appendChild(classeBadge);
-                    header.appendChild(toggleBtn);
-                    
-                    const detailsDiv = document.createElement('div');
-                    detailsDiv.className = 'mt-2 d-none';
+                    const detailsList = document.createElement('ul');
+                    detailsList.className = 'list-unstyled mt-2 mb-0 small';
                     
                     deteccoes.forEach((det, i) => {
-                        detailsDiv.innerHTML += `
-                            <div class="alert alert-light mb-1">
-                                <small>
-                                    <strong>ID:</strong> ${i+1} |
-                                    <strong>Confiança:</strong> ${(det.confianca * 100).toFixed(1)}% |
-                                    <strong>Posição:</strong> [${det.bbox.map(c => Math.round(c)).join(', ')}]
-                                </small>
-                            </div>
-                        `;
+                        // CORREÇÃO: Usar 'confidence' e formatar
+                        const confFormatada = det.confidence ? `${det.confidence.toFixed(1)}%` : 'N/A';
+                        const bbox = det.bbox || det.box || []; // Compatibilidade
+                        const posFormatada = bbox.length === 4 ? `[${bbox.join(', ')}]` : 'N/A';
+                        
+                        const detailItem = document.createElement('li');
+                        detailItem.textContent = `ID: ${i+1} | Confiança: ${confFormatada} | Posição: ${posFormatada}`;
+                        detailsList.appendChild(detailItem);
                     });
                     
                     classeItem.appendChild(header);
-                    classeItem.appendChild(detailsDiv);
-                    
+                    classeItem.appendChild(detailsList);
                     detectionsList.appendChild(classeItem);
-                    
-                    // Adicionar listener para exibir/ocultar detalhes
-                    toggleBtn.addEventListener('click', () => {
-                        if (detailsDiv.classList.contains('d-none')) {
-                            detailsDiv.classList.remove('d-none');
-                            toggleBtn.innerHTML = '<i class="bi bi-chevron-up"></i>';
-                        } else {
-                            detailsDiv.classList.add('d-none');
-                            toggleBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
-                        }
-                    });
                 }
                 
                 // Rolar para os resultados

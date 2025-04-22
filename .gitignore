@@ -32,8 +32,6 @@ ENV/
 *.swo
 
 # YOLO
-runs/
-*.pt
 dataset_treinamento/
 dataset/
 
@@ -44,9 +42,7 @@ dataset/
 .DS_Store
 Thumbs.db
 
-# Diretórios de uploads e resultados
-uploads/
-resultados/
+
 
 # Arquivos de desenvolvimento local
 .env
@@ -56,14 +52,13 @@ instance/
 .webassets-cache
 
 # Arquivos de modelo
-*.pt
+
 *.pth
 *.onnx
 *.tflite
 *.pb
 *.h5
-models/
-weights/
+
 
 # Banco de dados
 *.db
@@ -71,8 +66,7 @@ weights/
 *.sqlite3
 
 # Arquivos de mídia
-uploads/
-media/
+
 *.jpg
 *.jpeg
 *.png

@@ -1,13 +1,14 @@
-path: .\dataset_treinamento
-train: ./images
-val: ./images
-nc: 8
+path: ./datasets/epi
+train: images/train
+val: images/val
+test: images/test
+nc: 7
 names:
-- Abafador de ruido
-- Botas de seguranca
-- Capacete de seguranca
-- Luvas de protecao
-- Mascara
-- Oculos de protecao
-- Pessoa
-- Roupa de protecao
+  0: Abafador de ruido
+  1: Botas de seguranca
+  2: Capacete de seguranca
+  3: Luvas de protecao
+  4: Mascara
+  5: Oculos de protecao
+  6: Pessoa
+  7: Roupa de protecao

@@ -83,7 +83,8 @@ def carregar_modelo(nome_modelo=None):
         # Se nenhum modelo for especificado, procura um modelo por padrão
         if nome_modelo is None:
             modelos_disponiveis = os.listdir(MODELS_FOLDER)
-            modelos_pt = [m for m in modelos_disponiveis if m.endswith('.pt')]
+            # Filtra para incluir apenas arquivos .pt
+            modelos_pt = [m for m in modelos_disponiveis if m.endswith('.pt') and os.path.isfile(os.path.join(MODELS_FOLDER, m))]
             
             if not modelos_pt:
                 # Se não houver modelos locais, baixa o YOLOv8n
@@ -222,8 +223,9 @@ def listar_modelos():
         
         # Listar modelos locais
         for arquivo in os.listdir(MODELS_FOLDER):
-            if arquivo.endswith('.pt'):
-                caminho = os.path.join(MODELS_FOLDER, arquivo)
+            caminho = os.path.join(MODELS_FOLDER, arquivo)
+            # Verifica se é um arquivo e se termina com .pt
+            if os.path.isfile(caminho) and arquivo.endswith('.pt'):
                 tamanho = os.path.getsize(caminho) / (1024 * 1024)  # em MB
                 modelos.append({
                     "nome": arquivo,
